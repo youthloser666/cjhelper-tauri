@@ -1,0 +1,736 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CJHelper Tauri</title>
+  <!-- Leaflet CSS & JS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+
+<body>
+  <div id="app">
+    <!-- Topbar -->
+    <div class="topbar">
+      <div class="logo">
+        <div class="logo-sq">✦</div>CJ Helper Tools
+      </div>
+      <nav class="tnav-wrap" id="nav-menu">
+        <button class="tnav nav-btn active" data-target="tab-input">Data Table</button>
+        <button class="tnav nav-btn" data-target="tab-status">Status</button>
+        <button class="tnav nav-btn" data-target="tab-pm">Messages</button>
+        <button class="tnav nav-btn" data-target="tab-wa">Broadcast</button>
+        <button class="tnav nav-btn" data-target="tab-db">Database</button>
+        <button class="tnav nav-btn" data-target="tab-maps">Maps</button>
+        <button class="tnav nav-btn" data-target="tab-others">Others</button>
+      </nav>
+      <div class="datetime" id="clock">—</div>
+      <div class="topbar-right">
+        <span class="status-ok" id="status-bar">Belum ada data.</span>
+        <button class="tbtn" id="btn-theme">🌙 Dark</button>
+        <button class="tbtn-a" id="btn-refresh">⟳ Refresh</button>
+      </div>
+    </div>
+
+    <div class="main-body">
+      <!-- Content Area -->
+      <main class="content">
+        <!-- Input Tab -->
+        <div id="tab-input" class="tab-pane active" style="flex-direction:column;height:100%;display:flex;">
+          <div class="stat-row">
+            <div class="sc r">
+              <div class="sc-num" id="dash-down">0</div>
+              <div class="sc-label">Site Down</div>
+              <div class="sc-sub">Vs snapshot aktif</div>
+            </div>
+            <div class="sc g">
+              <div class="sc-num" id="dash-up">0</div>
+              <div class="sc-label">Site Up</div>
+              <div class="sc-sub">Recovery terdeteksi</div>
+            </div>
+            <div class="sc b">
+              <div class="sc-num" id="dash-master">0</div>
+              <div class="sc-label">Master Rows</div>
+              <div class="sc-sub">Data terakhir diproses</div>
+            </div>
+            <div class="sc a">
+              <div class="sc-num" id="dash-db">0</div>
+              <div class="sc-label">DB Rows</div>
+              <div class="sc-sub">Database aktif</div>
+            </div>
+          </div>
+          <div class="t-card" style="flex:1;margin-top:8px;">
+            <div class="t-card-head">
+              <span class="t-card-title">⬛ Input Data Table</span>
+              <div style="display:flex;gap:5px;">
+                <button class="tbtn-clr" id="btn-reset-snap">↺ Reset</button>
+                <button class="tbtn-a" id="btn-manual-snap">📸 Manual Snapshot</button>
+              </div>
+            </div>
+            <div class="snap-bar">📌 Snapshot: <span class="snap-tag" id="lbl-snapshot">Belum ada — otomatis backup tiap
+                jam</span></div>
+            <textarea id="txt-master" class="data-ta" placeholder="Paste data TSV di sini..."
+              style="flex:1;"></textarea>
+            <div class="act-bar">
+              <button class="tbtn-p" id="btn-process">▶ PROSES</button>
+              <button class="tbtn-load" id="btn-load-db">📂 Load DB (.xlsm/.xlsx)</button>
+              <button class="tbtn-clr" id="btn-clear">✕ Clear</button>
+              <span class="db-info" id="lbl-cek-db">DB belum di-load.</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Status Tab -->
+        <div id="tab-status" class="tab-pane hidden" style="flex-direction:column;height:100%;display:flex;">
+          <div class="t-card" style="flex:1;">
+            <div class="t-card-head">
+              <div style="display:flex;align-items:center;gap:10px;">
+                <span style="color:var(--red);font-weight:700;font-size:13px;">DOWN: <span
+                    id="lbl-down-count">0</span></span>
+                <span style="color:var(--grn);font-weight:700;font-size:13px;">UP: <span
+                    id="lbl-up-count">0</span></span>
+              </div>
+            </div>
+            <div class="filter-bar">
+              <div class="segmented-control" id="st-filter-status"
+                style="display:flex;gap:4px;background:transparent;padding:0;">
+                <button class="pill active seg-btn" data-val="ALL">ALL</button>
+                <button class="pill seg-btn" data-val="DOWN">↓ DOWN</button>
+                <button class="pill seg-btn" data-val="UP">↑ UP</button>
+              </div>
+              <input class="sinput" id="st-search" placeholder="Cluster / Site name..." />
+              <button class="tbtn-clr" id="st-search-reset">✕ Reset</button>
+              <div class="sort-grp">Urut Durasi:
+                <div class="segmented-control" id="st-filter-sort"
+                  style="display:flex;gap:3px;background:transparent;padding:0;">
+                  <button class="srt seg-btn" data-val="desc">Terlama</button>
+                  <button class="srt seg-btn" data-val="asc">Terbaru</button>
+                  <button class="srt seg-btn active" data-val="none">Default</button>
+                </div>
+              </div>
+            </div>
+            <div style="overflow-y:auto;flex:1;">
+              <table class="dt">
+                <thead>
+                  <tr>
+                    <th>Icon</th>
+                    <th>New Site</th>
+                    <th>Site Name</th>
+                    <th>Cluster</th>
+                    <th>Impact</th>
+                    <th>RTS</th>
+                    <th>Start Time</th>
+                    <th>Aging</th>
+                    <th>Remark</th>
+                  </tr>
+                </thead>
+                <tbody id="status-tbody"></tbody>
+              </table>
+            </div>
+            <div class="copy-bar">
+              <button class="cbtn ca" id="btn-st-copy-sel">📋 Copy Terpilih</button>
+              <button class="cbtn cd" id="btn-st-copy-down">❌ Copy DOWN</button>
+              <button class="cbtn cu" id="btn-st-copy-up">✅ Copy UP</button>
+              <button class="cbtn ca" id="btn-st-copy-all">📄 Copy Semua</button>
+              <span id="st-copy-info" style="margin-left:auto;font-size:9.5px;color:var(--txt-3);">Shift+klik range |
+                Ctrl+klik multi | Ctrl+C copy</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- PM Tab -->
+        <div id="tab-pm" class="tab-pane hidden" style="flex-direction:column;height:100%;display:flex;">
+          <div class="t-card" style="flex:1;">
+            <div class="msg-head">
+              <span id="pm-total-lbl" style="color:var(--accent-lit);font-weight:700;font-size:12.5px;">Total: 0
+                CLUSTER</span>
+              <span style="color:var(--txt-3);font-size:11px;margin-left:8px;">Mode:</span>
+              <div class="segmented-control" id="pm-mode-seg"
+                style="display:flex;gap:4px;background:transparent;padding:0;">
+                <button class="mode-btn seg-btn active" data-val="cluster">Cluster</button>
+                <button class="mode-btn seg-btn" data-val="rts">RTS</button>
+              </div>
+              <button class="tbtn" id="btn-pm-collapse">⊟ Collapse All</button>
+              <button class="tbtn" id="btn-pm-expand">⊞ Expand All</button>
+              <button class="tbtn" id="btn-pm-remark"
+                style="margin-left:auto;font-weight:bold;color:var(--accent-lit);">Remark: ON</button>
+              <button class="cbtn ca" id="btn-pm-copy-sel">📋 Copy Terpilih</button>
+              <button class="cbtn ca" id="btn-pm-copy-all">📄 Copy Semua</button>
+            </div>
+            <div class="ff">
+              <div class="fl">Filter Data:</div>
+              <input class="fi" id="pm-f-cl" placeholder="Cluster..." />
+              <input class="fi" id="pm-f-ns" placeholder="New Site..." />
+              <input class="fi" id="pm-f-rem" placeholder="Remark..." />
+              <button class="tbtn-clr" id="btn-pm-reset">✕ Reset Filter</button>
+            </div>
+            <textarea id="pm-preview-text" class="f-prev" readonly placeholder="Preview text..."></textarea>
+            <div style="overflow-y:auto;flex:1;">
+              <table class="dt">
+                <thead>
+                  <tr>
+                    <th style="width:120px;">Type</th>
+                    <th style="width:160px;">CLUSTER</th>
+                    <th style="width:140px;">TE Name</th>
+                    <th style="width:180px;">SITE NAME</th>
+                    <th style="width:80px;">OLD</th>
+                    <th style="width:100px;">NEW SITE</th>
+                    <th style="width:130px;">Start Time</th>
+                    <th>Remark</th>
+                  </tr>
+                </thead>
+                <tbody id="pm-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- WA Tab -->
+        <div id="tab-wa" class="tab-pane hidden" style="height: 100%; display: flex; flex-direction: column;">
+          <div class="bc-grid">
+            <div class="t-card" style="display:flex;flex-direction:column;flex:1;">
+              <div class="t-card-head">
+                <span class="t-card-title">📋 Broadcast WhatsApp</span>
+                <div id="wa-region-seg" style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
+                  <button class="pill active" data-val="CJN" style="font-size:9.5px;">CJN</button>
+                  <button class="pill" data-val="CJS" style="font-size:9.5px;">CJS</button>
+                  <span
+                    style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--red);padding:0 4px;margin-left:8px;">
+                    <div class="srv-dot srv-off" id="srv-dot-indicator"></div><span id="wa-status-text"
+                      style="font-weight:700;">DISCONNECTED</span>
+                  </span>
+                  <button class="tbtn" id="btn-wa-status" style="font-size:9.5px;padding:2px 6px;">Cek Status</button>
+                  <button class="tbtn-a" id="btn-wa-start" style="font-size:9.5px;padding:2px 6px;">Start
+                    Server</button>
+                </div>
+              </div>
+              <div
+                style="display:flex;align-items:center;justify-content:space-between;padding:4px 10px;background:var(--bg-surface);border-bottom:1px solid var(--bdr);">
+                <span style="font-size:10px;color:var(--txt-2);font-weight:600;">Message Preview</span>
+                <button class="tbtn-a" id="btn-gen-wa" style="font-size:9.5px;padding:2px 8px;">▶ Generate Share
+                  WA</button>
+              </div>
+              <textarea id="txt-wa-preview" class="bc-msg" style="width:100%;resize:none;border:none;outline:none;"
+                placeholder="Klik 'Generate' untuk membuat pesan..."></textarea>
+              <div
+                style="padding:5px 10px;background:var(--bg-surface);border-top:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;">
+                <span id="wa-char-count" style="font-size:9.5px;color:var(--txt-3);">0 karakter | 0 baris</span>
+                <button class="cbtn ca" id="btn-copy-wa">📋 Copy Text</button>
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:8px;">
+              <div class="t-card" style="flex:1;">
+                <div class="t-card-head"><span class="t-card-title">📡 Broadcast List</span><span id="wa-target-count"
+                    style="font-size:9.5px;color:var(--txt-3);">0 grup terpilih</span></div>
+                <div style="flex:1;overflow-y:auto;padding:0;">
+                  <table class="dt" style="width:100%;">
+                    <tbody id="wa-targets-tbody">
+                      <!-- Populated by JS -->
+                    </tbody>
+                  </table>
+                </div>
+                <div style="padding:6px 10px;border-top:1px solid var(--bdr);"><button class="tbtn-p" id="btn-wa-send"
+                    style="width:100%;" disabled>KIRIM BROADCAST</button></div>
+              </div>
+              <div class="t-card" style="height:150px;flex-shrink:0;">
+                <div class="t-card-head"><span class="t-card-title">📄 Riwayat</span><span id="wa-bc-log-date-main"
+                    style="font-size:9.5px;color:var(--txt-3);"></span></div>
+                <textarea id="wa-bc-log-box-main"
+                  style="flex:1;border:none;background:transparent;padding:10px;font-size:10px;color:var(--txt-3);resize:none;font-family:var(--mono);outline:none;"
+                  readonly>Belum ada broadcast hari ini.</textarea>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Database Tab -->
+        <div id="tab-db" class="tab-pane hidden">
+          <div class="t-card" style="flex:1;">
+            <div class="t-card-head">
+              <span class="t-card-title">🔍 Database Lookup</span>
+              <div style="display:flex;align-items:center;gap:5px;">
+                <button class="cbtn ca" id="btn-db-copy-all" style="margin-left:6px;">Copy Semua</button>
+              </div>
+            </div>
+            <div
+              style="display:flex;align-items:center;gap:6px;padding:6px 10px;background:var(--bg-surface);border-bottom:1px solid var(--bdr);flex-shrink:0;">
+              <span style="font-size:10.5px;color:var(--txt-2);white-space:nowrap;">New Site ID:</span>
+              <input class="sinput" id="db-search-input" placeholder="Ketik ID Site..." style="flex:1;width:auto;" />
+              <button class="tbtn-a" id="btn-db-search" style="padding:3px 12px;">🔍 Cek</button>
+              <button class="tbtn-clr" id="btn-db-clear">✕ Clear</button>
+              <span id="db-search-status" style="font-size:10px;color:var(--red);margin-left:5px;"></span>
+            </div>
+            <div style="overflow-y:auto;flex:1;padding:8px;">
+              <div class="ib">
+                <div class="ib-h">📋 Site Info</div>
+                <div class="ig">
+                  <div class="ir">
+                    <div class="il">Site ID (New)</div>
+                    <div class="iv em" id="db-f-site-id-new">—</div>
+                  </div>
+                  <div class="ir">
+                    <div class="il">Old Site ID</div>
+                    <div class="iv em" id="db-f-old-site-id">—</div>
+                  </div>
+                  <div class="ir">
+                    <div class="il">Site Name</div>
+                    <div class="iv em" id="db-f-site-name">—</div>
+                  </div>
+                  <div class="ir">
+                    <div class="il">Vendor</div>
+                    <div class="iv em" id="db-f-vendor">—</div>
+                  </div>
+                  <div class="ir">
+                    <div class="il">Host Name</div>
+                    <div class="iv em" id="db-f-host-name">—</div>
+                  </div>
+                  <div class="ir">
+                    <div class="il">FM Office</div>
+                    <div class="iv em" id="db-f-fm-office">—</div>
+                  </div>
+                  <div class="ir">
+                    <div class="il">Area</div>
+                    <div class="iv em" id="db-f-area">—</div>
+                  </div>
+                  <div class="ir">
+                    <div class="il">TLP</div>
+                    <div class="iv em" id="db-f-tlp">—</div>
+                  </div>
+                  <div class="ir">
+                    <div class="il">Cluster (MC)</div>
+                    <div class="iv em" id="db-f-cluster">—</div>
+                  </div>
+                  <div class="ir">
+                    <div class="il">Longitude</div>
+                    <div class="iv em" id="db-f-long">—</div>
+                  </div>
+                  <div class="ir">
+                    <div class="il">Latitude</div>
+                    <div class="iv em" id="db-f-lat">—</div>
+                  </div>
+                </div>
+              </div>
+              <div class="ib">
+                <div class="ib-h"
+                  style="background:rgba(74,158,120,.06);border-bottom-color:rgba(74,158,120,.2);color:var(--grn);">👤
+                  RTS</div>
+                <div class="ig">
+                  <div class="ir">
+                    <div class="il">RTS Name</div>
+                    <div class="iv em" id="db-f-rts-name">—</div>
+                  </div>
+                  <div class="ir">
+                    <div class="il">RTS New</div>
+                    <div class="iv em" id="db-f-rts-new">—</div>
+                  </div>
+                  <div class="ir" style="grid-column:1/-1;">
+                    <div class="il">RTS Phone</div>
+                    <div class="iv em" id="db-f-rts-phone">—</div>
+                  </div>
+                </div>
+              </div>
+              <div class="ib">
+                <div class="ib-h"
+                  style="background:rgba(196,141,58,.06);border-bottom-color:rgba(196,141,58,.2);color:var(--amb);">👤
+                  TE Information</div>
+                <div class="ig">
+                  <div class="ir">
+                    <div class="il">TE Name</div>
+                    <div class="iv em" id="db-f-te-name">—</div>
+                  </div>
+                  <div class="ir">
+                    <div class="il">TE Phone</div>
+                    <div class="iv em" id="db-f-te-phone">—</div>
+                  </div>
+                  <div class="ir" style="grid-column:1/-1;">
+                    <div class="il">TE Email</div>
+                    <div class="iv em" id="db-f-te-email">—</div>
+                  </div>
+                </div>
+              </div>
+              <div class="ib">
+                <div class="ib-h"
+                  style="background:rgba(74,130,196,.06);border-bottom-color:rgba(74,130,196,.2);color:var(--blu);">🔧
+                  CME Information</div>
+                <div class="ig">
+                  <div class="ir">
+                    <div class="il">CME Name</div>
+                    <div class="iv em" id="db-f-cme-name">—</div>
+                  </div>
+                  <div class="ir">
+                    <div class="il">CME Phone</div>
+                    <div class="iv em" id="db-f-cme-phone">—</div>
+                  </div>
+                  <div class="ir" style="grid-column:1/-1;">
+                    <div class="il">CME Email</div>
+                    <div class="iv em" id="db-f-cme-email">—</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Maps Tab -->
+        <div id="tab-maps" class="tab-pane hidden" style="flex-direction:column;height:100%;display:flex;">
+          <div class="msg-head" style="margin-bottom:7px;border-radius:var(--r);flex-shrink:0;flex-wrap:wrap;gap:6px;">
+            <span style="font-weight:700;font-size:13px;color:var(--txt-1);">🗺 Site Maps</span>
+            <div style="display:flex;gap:4px;align-items:center;margin-left:auto;">
+              <input type="text" id="map-site-input" class="sinput" placeholder="Site ID / Alamat / Lat,Lon..." style="width:220px;">
+              <button class="tbtn-p" id="btn-map-search">🔍 Cari</button>
+              <button class="tbtn" id="btn-map-street">🛣️ Street</button>
+              <div style="width:1px;height:18px;background:var(--bdr);margin:0 4px;"></div>
+              <button class="tbtn-a" id="btn-map-plot-down">📍 Plot DOWN</button>
+              <button class="tbtn-clr" id="btn-map-clear">✕ Clear</button>
+            </div>
+          </div>
+          <div class="map-wrap" style="position:relative;z-index:1;flex:1;border-radius:var(--r);overflow:hidden;min-height:300px;display:flex;">
+            <div id="map-container" style="flex:1;background:#0c0c0e;"></div>
+            
+            <!-- Nearest BTS Panel -->
+            <div id="map-nearest-panel" class="hidden" style="position:absolute;top:10px;right:10px;width:300px;background:var(--bg-card);border:1px solid var(--bdr);border-radius:var(--r);z-index:1000;box-shadow:0 4px 15px rgba(0,0,0,0.5);display:flex;flex-direction:column;max-height:90%;overflow:hidden;">
+               <div style="padding:8px 12px;background:var(--bg-surface);border-bottom:1px solid var(--bdr);font-weight:bold;color:var(--txt-1);display:flex;justify-content:space-between;align-items:center;">
+                  <span style="font-size:11.5px;">📡 5 BTS Terdekat</span>
+                  <button class="tbtn-clr" id="btn-close-nearest" style="padding:2px 6px;">✕</button>
+               </div>
+               <div id="map-nearest-list" style="overflow-y:auto;flex:1;padding:8px;display:flex;flex-direction:column;gap:6px;font-size:11px;">
+                  <!-- Populated by JS -->
+               </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Others Tab -->
+        <div id="tab-others" class="tab-pane hidden" style="flex-direction:column;height:100%;display:flex;">
+          <div class="tab-row" style="margin-bottom:8px;border-radius:var(--r);overflow:hidden;">
+            <button class="tb active" id="subbtn-fmt">🎨 Formatting</button>
+            <button class="tb" id="subbtn-wa-mgmt">📢 Broadcast Utils</button>
+            <button class="tb" id="subbtn-db-edit">📝 Edit Database</button>
+            <button class="tb" id="subbtn-system">⚙️ System</button>
+          </div>
+
+          <!-- 1. Formatting Sub-tab -->
+          <div id="subtab-fmt" class="subtab-pane" style="flex-direction:column;flex:1;display:flex;overflow-y:auto;">
+            <div class="msg-head" style="margin-bottom:7px;border-radius:var(--r);">
+              <span id="fmt-header-title" style="color:var(--accent-lit);font-weight:700;font-size:12.5px;">🎨
+                Formatting Messages</span>
+              <div class="segmented-control"
+                style="display:flex;gap:4px;margin-left:auto;background:transparent;padding:0;">
+                <button class="mode-btn seg-btn active" id="fmt-tab-msg">💬 Messages</button>
+                <button class="mode-btn seg-btn" id="fmt-tab-bc">📤 Broadcast</button>
+              </div>
+              <button class="tbtn-p" id="btn-fmt-save" style="margin-left:8px;">▶ Apply & Preview</button>
+              <button class="tbtn-clr" id="btn-fmt-reset">↺ Reset Default</button>
+            </div>
+
+            <div class="ib" style="margin-bottom:7px;">
+              <div class="ib-h">Preview:</div>
+              <textarea id="fmt-preview-box" class="data-ta"
+                style="min-height:120px;border-radius:0;margin:0;color:var(--grn);" readonly></textarea>
+            </div>
+
+            <div class="ib" style="padding:10px;display:flex;flex-direction:column;gap:5px;">
+              <div class="ff" style="border:none;padding:0;">
+                <div class="fl" style="text-align:right;">Baris entry:</div>
+                <input type="text" id="fmt-msg-line" class="fi">
+                <div class="fh">{icon} {type} {cluster} {sitename} {time}</div>
+              </div>
+              <div class="ff" style="border:none;padding:0;">
+                <div class="fl" style="text-align:right;">Remark:</div>
+                <input type="text" id="fmt-msg-remark" class="fi" value="{remark}">
+                <div class="fh">kosongkan untuk sembunyikan remark</div>
+              </div>
+              <div class="ff" style="border:none;padding:0;">
+                <div class="fl" style="text-align:right;">Header group:</div>
+                <input type="text" id="fmt-msg-hdr" class="fi">
+                <div class="fh">{cluster} {pic} {rts}</div>
+              </div>
+              <div class="ff" style="border:none;padding:0;">
+                <div class="fl" style="text-align:right;">Label SITE DOWN:</div>
+                <input type="text" id="fmt-lbl-sd" class="fi">
+                <div class="fh"></div>
+              </div>
+              <div class="ff" style="border:none;padding:0;">
+                <div class="fl" style="text-align:right;">Label CELLS DOWN:</div>
+                <input type="text" id="fmt-lbl-cd" class="fi">
+                <div class="fh"></div>
+              </div>
+              <div class="ff" style="border:none;padding:0;">
+                <div class="fl" style="text-align:right;">Label BCCH:</div>
+                <input type="text" id="fmt-lbl-bcch" class="fi" value="*CELL DOWN BCCH Missing NOKIA :*">
+                <div class="fh">Header section BCCH</div>
+              </div>
+              <div class="ff" style="border:none;padding:0;">
+                <div class="fl" style="text-align:right;">Keyword BCCH:</div>
+                <input type="text" id="fmt-key-bcch" class="fi" value="BCCH">
+                <div class="fh">Kata kunci di REMARK untuk BCCH</div>
+              </div>
+              <div class="ff" style="border:none;padding:0;">
+                <div class="fl" style="text-align:right;">Karakter icon:</div>
+                <input type="text" id="fmt-icon-down" class="fi">
+                <div class="fh">Icon saat {icon} dipakai</div>
+              </div>
+              <div class="ff" style="border:none;padding:0;">
+                <div class="fl" style="text-align:right;">Spacing:</div>
+                <label
+                  style="display:flex;align-items:center;gap:5px;flex:1;cursor:pointer;color:var(--txt-1);font-size:11px;">
+                  <input type="checkbox" id="fmt-spacing-chk"> Tambah baris kosong antar entry
+                </label>
+                <div class="fh"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 2. Broadcast Utils Sub-tab -->
+          <div id="subtab-wa-mgmt" class="subtab-pane hidden"
+            style="flex-direction:column;flex:1;display:flex;overflow:hidden;">
+            <div class="msg-head" style="margin-bottom:7px;border-radius:var(--r);">
+              <span style="color:var(--accent-lit);font-weight:700;font-size:12.5px;">📢 Broadcast Utilities</span>
+              <span style="color:var(--txt-3);font-size:10.5px;margin-left:8px;">Centang grup yang ingin masuk daftar
+                broadcast. WA harus terhubung.</span>
+            </div>
+
+            <div class="ff"
+              style="background:var(--bg-card);border-radius:var(--r);border:1px solid var(--bdr);margin-bottom:7px;">
+              <div class="fl" style="width:auto;font-weight:700;">🔍 Cari Grup:</div>
+              <input type="text" id="wa-group-search" class="fi" placeholder="Ketik nama grup WA...">
+              <button id="btn-wa-clear-search" class="tbtn-clr">✕</button>
+              <span id="wa-search-count" style="font-size:11px;color:var(--txt-3);width:80px;"></span>
+            </div>
+
+            <div class="ib" style="flex:1;overflow-y:auto;margin-bottom:7px;border-radius:var(--r);">
+              <table class="dt" style="width: 100%;">
+                <thead>
+                  <tr>
+                    <th style="width: 50px;">Icon</th>
+                    <th>Nama Grup</th>
+                  </tr>
+                </thead>
+                <tbody id="wa-groups-tbody">
+                  <!-- populated by JS -->
+                </tbody>
+              </table>
+            </div>
+
+            <div class="msg-head" style="margin-bottom:7px;border-radius:var(--r);justify-content:space-between;">
+              <span id="wa-groups-status" style="color:var(--grn);font-weight:700;font-size:11px;"></span>
+              <div style="display:flex;gap:5px;">
+                <button id="btn-wa-refresh-groups" class="tbtn">↻ Refresh dari WA</button>
+                <button id="btn-wa-save-groups" class="tbtn-p">💾 Simpan Pilihan</button>
+              </div>
+            </div>
+
+            <!-- Broadcast Log -->
+            <div class="ib" style="display:flex;flex-direction:column;height:180px;">
+              <div class="ib-h" style="display:flex;justify-content:space-between;align-items:center;">
+                <span>📋 Riwayat Broadcast Hari Ini</span>
+                <span style="font-size:10px;color:var(--txt-3);font-weight:normal;" id="wa-bc-log-date"></span>
+              </div>
+              <textarea id="wa-bc-log-box" class="data-ta" style="flex:1;border:none;border-radius:0;margin:0;"
+                readonly>Belum ada broadcast hari ini.</textarea>
+            </div>
+          </div>
+
+          <!-- 3. Edit Database Sub-tab -->
+          <div id="subtab-db-edit" class="subtab-pane hidden"
+            style="flex-direction:column;flex:1;display:flex;overflow-y:auto;">
+            <div class="msg-head" style="margin-bottom:7px;border-radius:var(--r);">
+              <span style="color:var(--accent-lit);font-weight:700;font-size:12.5px;">📝 Edit Database</span>
+              <span id="db-edit-status-header"
+                style="font-size:11px;color:var(--txt-3);margin-left:auto;margin-right:10px;"></span>
+              <button id="btn-db-undo" class="tbtn">↩ Undo</button>
+              <button id="btn-db-export" class="tbtn-load" style="margin-left:5px;">📥 Export DB</button>
+            </div>
+
+            <div class="ff"
+              style="background:var(--bg-card);border-radius:var(--r);border:1px solid var(--bdr);margin-bottom:7px;">
+              <div class="fl" style="width:auto;font-weight:700;">Site ID / Name:</div>
+              <input type="text" id="db-edit-search-inp" class="fi" style="font-size:12px;padding:4px 8px;"
+                placeholder="Masukkan SITE ID...">
+              <button id="btn-db-edit-search" class="tbtn-p">🔍 Cari</button>
+              <button id="btn-db-edit-clear" class="tbtn-clr">✕ Clear</button>
+              <span id="db-edit-search-status" style="font-size:11px;color:var(--txt-3);width:150px;"></span>
+            </div>
+
+            <div id="db-edit-form" class="hidden" style="flex-direction:column;gap:7px;">
+              <!-- Card 1: Site Info -->
+              <div class="ib">
+                <div class="ib-h">🏢 Site Info</div>
+                <div class="ig" style="padding:10px;gap:5px;">
+                  <div class="ff" style="border:none;padding:0;">
+                    <div class="fl" style="width:100px;">Site ID MSH:</div><input id="dbe-site-id-msh" class="fi"
+                      disabled>
+                  </div>
+                  <div class="ff" style="border:none;padding:0;">
+                    <div class="fl" style="width:100px;">Longitude:</div><input id="dbe-lon" class="fi">
+                  </div>
+                  <div class="ff" style="border:none;padding:0;">
+                    <div class="fl" style="width:100px;">Site Name:</div><input id="dbe-site-name" class="fi">
+                  </div>
+                  <div class="ff" style="border:none;padding:0;">
+                    <div class="fl" style="width:100px;">Latitude:</div><input id="dbe-lat" class="fi">
+                  </div>
+                  <div class="ff" style="border:none;padding:0;">
+                    <div class="fl" style="width:100px;">Old Site ID:</div><input id="dbe-old-site-id" class="fi">
+                  </div>
+                  <div class="ff" style="border:none;padding:0;">
+                    <div class="fl" style="width:100px;">TLP:</div><input id="dbe-tlp" class="fi">
+                  </div>
+                  <div class="ff" style="border:none;padding:0;">
+                    <div class="fl" style="width:100px;">Cluster (MC):</div><input id="dbe-cluster" class="fi">
+                  </div>
+                  <div class="ff" style="border:none;padding:0;">
+                    <div class="fl" style="width:100px;">Site Class:</div><input id="dbe-site-class" class="fi">
+                  </div>
+                  <div class="ff" style="border:none;padding:0;">
+                    <div class="fl" style="width:100px;">Area:</div><input id="dbe-area" class="fi">
+                  </div>
+                  <div class="ff" style="border:none;padding:0;">
+                    <div class="fl" style="width:100px;">Hub Type:</div><input id="dbe-hub-type" class="fi">
+                  </div>
+                  <div class="ff" style="border:none;padding:0;">
+                    <div class="fl" style="width:100px;">FM Office:</div><input id="dbe-fm-office" class="fi">
+                  </div>
+                  <div class="ff" style="border:none;padding:0;">
+                    <div class="fl" style="width:100px;">Address:</div><input id="dbe-address" class="fi">
+                  </div>
+                  <div class="ff" style="border:none;padding:0;">
+                    <div class="fl" style="width:100px;">Vendor:</div><input id="dbe-vendor" class="fi">
+                  </div>
+                  <div class="ff" style="border:none;padding:0;">
+                    <div class="fl" style="width:100px;">Host Name:</div><input id="dbe-host-name" class="fi">
+                  </div>
+                </div>
+              </div>
+
+              <!-- Card 2: RTS Info -->
+              <div class="ib" style="border-color:rgba(74,158,120,.3);">
+                <div class="ib-h" style="background:rgba(74,158,120,.06);color:var(--grn);">📡 RTS Info</div>
+                <div class="ig" style="padding:10px;gap:5px;">
+                  <div class="ff" style="border:none;padding:0;">
+                    <div class="fl" style="width:100px;">RTS Name:</div><input id="dbe-rts-name" class="fi">
+                  </div>
+                  <div class="ff" style="border:none;padding:0;">
+                    <div class="fl" style="width:100px;">RTS Email:</div><input id="dbe-rts-email" class="fi">
+                  </div>
+                  <div class="ff" style="border:none;padding:0;">
+                    <div class="fl" style="width:100px;">RTS Phone:</div><input id="dbe-rts-phone" class="fi">
+                  </div>
+                  <div class="ff" style="border:none;padding:0;">
+                    <div class="fl" style="width:100px;">RTS NEW:</div><input id="dbe-rts-new" class="fi">
+                  </div>
+                </div>
+              </div>
+
+              <!-- Card 3 & 4: TE and CME -->
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;">
+                <div class="ib" style="border-color:rgba(196,141,58,.3);margin:0;">
+                  <div class="ib-h" style="background:rgba(196,141,58,.06);color:var(--amb);">👷 TE Info</div>
+                  <div style="padding:10px;display:flex;flex-direction:column;gap:5px;">
+                    <div class="ff" style="border:none;padding:0;">
+                      <div class="fl" style="width:100px;">TE Name:</div><input id="dbe-te-name" class="fi">
+                    </div>
+                    <div class="ff" style="border:none;padding:0;">
+                      <div class="fl" style="width:100px;">TE Phone:</div><input id="dbe-te-phone" class="fi">
+                    </div>
+                    <div class="ff" style="border:none;padding:0;">
+                      <div class="fl" style="width:100px;">TE Email:</div><input id="dbe-te-email" class="fi">
+                    </div>
+                  </div>
+                </div>
+                <div class="ib" style="border-color:rgba(74,130,196,.3);margin:0;">
+                  <div class="ib-h" style="background:rgba(74,130,196,.06);color:var(--blu);">🏗️ CME Info</div>
+                  <div style="padding:10px;display:flex;flex-direction:column;gap:5px;">
+                    <div class="ff" style="border:none;padding:0;">
+                      <div class="fl" style="width:100px;">CME Name:</div><input id="dbe-cme-name" class="fi">
+                    </div>
+                    <div class="ff" style="border:none;padding:0;">
+                      <div class="fl" style="width:100px;">CME Phone:</div><input id="dbe-cme-phone" class="fi">
+                    </div>
+                    <div class="ff" style="border:none;padding:0;">
+                      <div class="fl" style="width:100px;">CME Email:</div><input id="dbe-cme-email" class="fi">
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <button id="btn-db-edit-save" class="tbtn-p" style="margin-top:5px;padding:8px 15px;">💾 Simpan
+                Perubahan</button>
+            </div>
+          </div>
+          
+          <!-- 4. System Sub-tab -->
+          <div id="subtab-system" class="subtab-pane hidden" style="flex-direction:column;flex:1;display:flex;overflow-y:auto;gap:10px;">
+            <div class="msg-head" style="margin-bottom:7px;border-radius:var(--r);">
+              <span style="color:var(--accent-lit);font-weight:700;font-size:12.5px;">⚙️ System & Updates</span>
+            </div>
+            
+            <div class="ib" style="padding:15px;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:200px;text-align:center;">
+              <div style="font-size:40px;margin-bottom:15px;">🚀</div>
+              <h3 style="margin:0 0 5px 0;color:var(--txt-1);">CJHelper Versi <span id="app-version-display">0.1.0</span></h3>
+              <p style="font-size:12px;color:var(--txt-3);margin-bottom:20px;">Pastikan Anda selalu menggunakan versi terbaru untuk mendapatkan fitur terkini dan perbaikan bug.</p>
+              
+              <div id="update-status-container" style="margin-bottom:20px;padding:10px 20px;border-radius:var(--r);background:rgba(255,255,255,0.05);min-width:300px;">
+                <span id="update-status-text" style="font-size:13px;font-weight:700;color:var(--txt-2);">Klik tombol di bawah untuk cek update</span>
+              </div>
+              
+              <div style="display:flex;gap:10px;">
+                <button id="btn-check-update" class="tbtn-p" style="padding:8px 20px;">🔍 Cek Update Sekarang</button>
+                <button id="btn-install-update" class="tbtn-load hidden" style="padding:8px 20px;">📥 Download & Install</button>
+              </div>
+              
+              <div id="update-progress-bar-container" class="hidden" style="width:100%;max-width:400px;margin-top:20px;">
+                <div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:4px;color:var(--txt-3);">
+                    <span>Downloading...</span>
+                    <span id="update-progress-percent">0%</span>
+                </div>
+                <div style="width:100%;height:8px;background:rgba(255,255,255,0.1);border-radius:4px;overflow:hidden;">
+                    <div id="update-progress-fill" style="width:0%;height:100%;background:var(--accent);transition:width 0.3s ease;"></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="ib">
+                <div class="ib-h">ℹ️ Informasi Aplikasi</div>
+                <div style="padding:10px;font-size:12px;color:var(--txt-3);line-height:1.6;">
+                    • Nama: CJHelper Tauri<br>
+                    • Framework: Tauri 2.0 (Rust + JS)<br>
+                    • Fitur: Data Processing, WA Broadcast, Maps Integration, DB Management<br>
+                    • Developer: Antigravity Team
+                </div>
+            </div>
+          </div>
+
+        </div>
+
+      </main>
+    </div>
+  </div>
+  <!-- WA QR Modal -->
+  <div id="wa-qr-modal" class="modal hidden" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(5px);">
+    <div style="background:var(--bg-card);border:1px solid var(--bdr);border-radius:var(--r);width:360px;padding:25px;display:flex;flex-direction:column;align-items:center;box-shadow:0 15px 50px rgba(0,0,0,0.5);">
+      <h3 style="margin:0 0 10px 0;color:var(--txt-1);font-size:16px;">🔗 Scan QR WhatsApp</h3>
+      <p style="font-size:12px;color:var(--txt-3);text-align:center;line-height:1.5;margin-bottom:20px;">
+        1. Buka WhatsApp di HP<br>
+        2. Menu (⋮) atau Settings (⚙️) &gt; Linked Devices<br>
+        3. Link a Device &gt; Scan QR di bawah
+      </p>
+      <div id="wa-qr-container" style="background:white;padding:15px;border-radius:10px;margin-bottom:20px;min-width:200px;min-height:200px;display:flex;align-items:center;justify-content:center;">
+        <img id="wa-qr-img" src="" alt="QR Code" style="width:200px;height:200px;">
+      </div>
+      <div style="display:flex;gap:10px;width:100%;">
+        <button class="tbtn-clr" id="btn-close-wa-qr" style="flex:1;padding:8px;">Tutup</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="./main.js"></script>
+</body>
+
+</html>
