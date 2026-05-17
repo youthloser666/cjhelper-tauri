@@ -1,12 +1,17 @@
-const { invoke } = window.__TAURI__.core;
-const { check } = window.__TAURI__.updater;
-const { getVersion } = window.__TAURI__.app;
+const tauriCore = window.__TAURI__ ? window.__TAURI__.core : null;
+const invoke = tauriCore ? tauriCore.invoke : null;
+const check = window.__TAURI__ && window.__TAURI__.updater ? window.__TAURI__.updater.check : null;
+const getVersion = window.__TAURI__ && window.__TAURI__.app ? window.__TAURI__.app.getVersion : null;
 
 // Theme logic
 const btnTheme = document.getElementById('btn-theme');
 btnTheme.addEventListener('click', () => {
   document.body.classList.toggle('light');
-  btnTheme.textContent = document.body.classList.contains('light') ? '☀️ Light' : '🌙 Dark';
+  const isLight = document.body.classList.contains('light');
+  btnTheme.textContent = isLight ? '☀️ Light' : '🌙 Dark';
+  if (typeof updateMapTheme === 'function') {
+    updateMapTheme(isLight);
+  }
 });
 
 // Clock update
@@ -28,7 +33,16 @@ navBtns.forEach(btn => {
     tabPanes.forEach(p => p.classList.add('hidden'));
     
     btn.classList.add('active');
-    document.getElementById(btn.dataset.target).classList.remove('hidden');
+    const targetId = btn.dataset.target;
+    document.getElementById(targetId).classList.remove('hidden');
+    
+    // Auto-generate WA Broadcast message when navigating to Broadcast tab to ensure actual data
+    if (targetId === 'tab-wa') {
+      const btnGenWa = document.getElementById('btn-gen-wa');
+      if (btnGenWa) {
+        btnGenWa.click();
+      }
+    }
   });
 });
 
@@ -249,6 +263,8 @@ btnProcess.addEventListener('click', async () => {
     
     if (res.status === "UNCHANGED") {
       statusBar.textContent = `⚠️ Data sama — ✅ snapshot dipertahankan. (${res.count} baris, ${new Date().toLocaleTimeString('id-ID')})`;
+    } else if (res.status === "UPDATED_DETAILS") {
+      statusBar.textContent = `✅ Detail diperbarui — snapshot dipertahankan. (${res.count} baris, ${new Date().toLocaleTimeString('id-ID')})`;
     } else if (res.status === "NEW_BASELINE") {
       document.getElementById('lbl-snapshot').textContent = `Baseline: ${res.count} baris (proses pertama)`;
       statusBar.textContent = `Selesai! Data: ${res.count} baris diproses.`;
@@ -488,8 +504,9 @@ function generateShareWA(statuses) {
     return arr.sort((a, b) => (a.rts || "").localeCompare(b.rts || "", undefined, {numeric: true, sensitivity: 'base'}));
   };
 
-  const ful = natSort(statuses.filter(s => s.impact && s.impact.toLowerCase().includes('fully')));
-  const cel = natSort(statuses.filter(s => !s.impact || !s.impact.toLowerCase().includes('fully')));
+  const downs = statuses.filter(s => s.status === 'DOWN');
+  const ful = natSort(downs.filter(s => s.impact && s.impact.toLowerCase().includes('fully')));
+  const cel = natSort(downs.filter(s => !s.impact || !s.impact.toLowerCase().includes('fully')));
   
   const bcch_kw = (fmtBc.key_bcch || "BCCH").toUpperCase();
   const cel_bcch = cel.filter(s => (s.remark || "").toUpperCase().includes(bcch_kw));
@@ -535,9 +552,9 @@ function generateShareWA(statuses) {
         te: s.pic || ""
       };
 
-      let ln = fmtBc.msg_line.replace(/\{(\w+)\}/g, (_, k) => ctx[k] || "");
-      if (showRemark && s.remark && fmtBc.msg_remark.trim()) {
-          ln += "\n" + fmtBc.msg_remark.replace(/\{(\w+)\}/g, (_, k) => ctx[k] || "");
+      let ln = (fmtBc.msg_line || "{icon} {rts} / {cluster} /  {new}  / {sitename} / {category} / {time}").replace(/\{(\w+)\}/g, (_, k) => ctx[k] || "");
+      if (showRemark && s.remark && (fmtBc.msg_remark || " / {remark}").trim()) {
+          ln += (fmtBc.msg_remark || " / {remark}").replace(/\{(\w+)\}/g, (_, k) => ctx[k] || "");
       }
       return ln;
     }).join("\n");
@@ -783,30 +800,41 @@ btnDbSearch.addEventListener('click', async () => {
     
     // Fill fields
     const get = (k) => row[k] || '—';
+    const setVal = (field, val) => {
+      const el = dbFields[field];
+      if (!el) return;
+      const text = val || '—';
+      el.textContent = text;
+      if (text === '—' || !text) {
+        el.classList.add('em');
+      } else {
+        el.classList.remove('em');
+      }
+    };
+
+    setVal('site-id-new', get('Site ID (New)'));
+    setVal('area', get('Area'));
+    setVal('site-name', get('Site Name'));
+    setVal('vendor', get('Vendor'));
+    setVal('old-site-id', get('Old Site ID'));
+    setVal('long', get('Longitude'));
+    setVal('cluster', get('Cluster (MC)'));
+    setVal('lat', get('Latitude'));
+    setVal('host-name', get('Host Name'));
+    setVal('fm-office', get('FM Office'));
+    setVal('tlp', get('TLP'));
     
-    dbFields['site-id-new'].textContent = get('Site ID (New)');
-    dbFields['area'].textContent = get('Area');
-    dbFields['site-name'].textContent = get('Site Name');
-    dbFields['vendor'].textContent = get('Vendor');
-    dbFields['old-site-id'].textContent = get('Old Site ID');
-    dbFields['long'].textContent = get('Longitude');
-    dbFields['cluster'].textContent = get('Cluster (MC)');
-    dbFields['lat'].textContent = get('Latitude');
-    dbFields['host-name'].textContent = get('Host Name');
-    dbFields['fm-office'].textContent = get('FM Office');
-    dbFields['tlp'].textContent = get('TLP');
+    setVal('rts-name', get('RTS Name'));
+    setVal('rts-new', get('RTS NEW'));
+    setVal('rts-phone', get('RTS Phone'));
     
-    dbFields['rts-name'].textContent = get('RTS Name');
-    dbFields['rts-new'].textContent = get('RTS NEW');
-    dbFields['rts-phone'].textContent = get('RTS Phone');
+    setVal('te-name', get('TE Name'));
+    setVal('te-phone', get('TE Phone'));
+    setVal('te-email', get('TE Email'));
     
-    dbFields['te-name'].textContent = get('TE Name');
-    dbFields['te-phone'].textContent = get('TE Phone');
-    dbFields['te-email'].textContent = get('TE Email');
-    
-    dbFields['cme-name'].textContent = get('CME Name');
-    dbFields['cme-phone'].textContent = get('CME Phone');
-    dbFields['cme-email'].textContent = get('CME Email');
+    setVal('cme-name', get('CME Name'));
+    setVal('cme-phone', get('CME Phone'));
+    setVal('cme-email', get('CME Email'));
     
   } catch(e) {
     dbSearchStatus.textContent = `Error: ${e}`;
@@ -840,16 +868,30 @@ Object.values(dbFields).forEach(el => {
 
 // Maps Integration Logic
 let siteMap = null;
+let mapTileLayer = null;
 let mapMarkers = [];
 
 function initMap() {
   if (siteMap) return;
   siteMap = L.map('map-container').setView([-6.98, 110.42], 8); // Default Central Java
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  const isLight = document.body.classList.contains('light');
+  const tileUrl = isLight 
+    ? 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'
+    : 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+  mapTileLayer = L.tileLayer(tileUrl, {
       attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
       subdomains: 'abcd',
       maxZoom: 19
   }).addTo(siteMap);
+}
+
+function updateMapTheme(isLight) {
+  if (siteMap && mapTileLayer) {
+    const tileUrl = isLight 
+      ? 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'
+      : 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+    mapTileLayer.setUrl(tileUrl);
+  }
 }
 
 document.querySelector('[data-target="tab-maps"]').addEventListener('click', () => {
@@ -938,23 +980,6 @@ document.getElementById('btn-map-plot-down').addEventListener('click', async () 
   }
 });
 
-// Others Tab Sub-navigation
-const subBtns = [document.getElementById('subbtn-fmt'), document.getElementById('subbtn-wa-mgmt'), document.getElementById('subbtn-db-edit')];
-const subPanes = [document.getElementById('subtab-fmt'), document.getElementById('subtab-wa-mgmt'), document.getElementById('subtab-db-edit')];
-
-subBtns.forEach((btn, idx) => {
-  if (!btn) return;
-  btn.addEventListener('click', () => {
-    subBtns.forEach(b => b.classList.remove('active', 'btn-primary'));
-    subBtns.forEach(b => b.classList.add('btn-outline'));
-    subPanes.forEach(p => p.classList.add('hidden'));
-    
-    btn.classList.remove('btn-outline');
-    btn.classList.add('active', 'btn-primary');
-    subPanes[idx].classList.remove('hidden');
-    subPanes[idx].classList.add('flex');
-  });
-});
 
 // Formatting Logic
 const defaultFmt = {
@@ -1418,7 +1443,13 @@ function formatSingleLine(s, fmtObj, showRemarkOverride) {
 function generateGroupText(g, useBcFormat = false) {
     const f = useBcFormat ? fmtBc : fmtMsg;
     const ctx = { cluster: g.cluster, rts: g.rts, pic: g.pic, te: g.pic };
-    const headerStr = f.msg_hdr.replace(/\{(\w+)\}/g, (_, k) => ctx[k] || "");
+    let headerStr = f.msg_hdr.replace(/\{(\w+)\}/g, (_, k) => ctx[k] || "");
+    if (pmMode === 'rts' && !useBcFormat) {
+        const n_cl = g.cluster ? g.cluster.split(', ').length : 0;
+        const n_sd = g.fully.length;
+        const n_cd = g.cell.length;
+        headerStr = `RTS : ${g.rts} (${n_cl} cluster: ${g.cluster}) | SD: ${n_sd} | CD: ${n_cd}`;
+    }
     
     let lines = [headerStr, ""];
     
@@ -1504,7 +1535,7 @@ function processPMData() {
     downSites.forEach(s => {
       const rts = s.rts || "(Tanpa RTS)";
       const pic = s.pic || "";
-      const key = `${rts}|${pic}`;
+      const key = rts;
       
       if (!rawMap[key]) {
         rawMap[key] = { 
@@ -1517,12 +1548,18 @@ function processPMData() {
         };
       }
       
+      if (!rawMap[key].pic && pic) {
+        rawMap[key].pic = pic;
+        rawMap[key].te = pic;
+      }
+      
       rawMap[key].clusters.add(s.cluster);
       const fmt = formatSingleLine(s, fmtMsg, pmShowRemark);
       rawMap[key].entries.push({ ...s, ...fmt });
     });
     for (let k in rawMap) {
-      rawMap[k].cluster = Array.from(rawMap[k].clusters).join(", ");
+      const sortedCls = Array.from(rawMap[k].clusters).sort((a, b) => a.localeCompare(b, undefined, {numeric: true, sensitivity: 'base'}));
+      rawMap[k].cluster = sortedCls.join(", ");
     }
   }
 
@@ -1544,7 +1581,7 @@ function processPMData() {
     const cell = entries.filter(e => !e.isFully && !e.isBcch);
     const hdr = pmMode === 'cluster' 
       ? (g.pic ? `${g.cluster}  |  ${g.pic}  |  RTS: ${g.rts}` : `${g.cluster}  |  RTS: ${g.rts}`)
-      : (g.pic ? `${g.rts}  |  ${g.pic}  |  ${g.cluster}` : `${g.rts}  |  ${g.cluster}`);
+      : `RTS: ${g.rts}`;
     
     pmDataGroups.push({ 
       key, 

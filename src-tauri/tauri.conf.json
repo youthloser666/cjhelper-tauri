@@ -17,13 +17,14 @@
     ],
     "security": {
       "csp": null
-    },
-    "plugins": {
-      "updater": {
-        "endpoints": [
-          "https://github.com/user/repo/releases/latest/download/latest.json"
-        ]
-      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEZGOTYyNjFFRTRBMzU0QTAKUldTZ1ZLUGtIaWFXLzdBaDJWSmVyMUtQU0JCNCtRcnc2dFhHYm9nc2svQWNEZm0veGR6Rlk4U2YK",
+      "endpoints": [
+        "https://github.com/youthloser666/cjhelper-tauri/releases/latest/download/latest.json"
+      ]
     }
   },
   "bundle": {

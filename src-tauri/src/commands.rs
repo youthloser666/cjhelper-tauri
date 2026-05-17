@@ -177,17 +177,25 @@ pub fn parse_pasted_table(state: State<'_, AppState>, text: String) -> Result<Pa
         }
     }
 
-    let status = if is_same { "UNCHANGED".to_string() } else {
+    let status = if is_same {
+        if *master != df {
+            *master = df.clone();
+            "UPDATED_DETAILS".to_string()
+        } else {
+            "UNCHANGED".to_string()
+        }
+    } else {
         if !master.is_empty() {
             *sub_master = master.clone();
+            *master = df.clone();
             "UPDATED".to_string()
         } else {
             *sub_master = df.clone();
+            *master = df.clone();
             "NEW_BASELINE".to_string()
         }
     };
 
-    if !is_same { *master = df; }
     Ok(ParseResult { count, status })
 }
 
@@ -299,6 +307,20 @@ fn fmt_dt(st: &str) -> String {
         }
     }
     st.to_string()
+}
+
+fn fmt_st(st: &str) -> String {
+    let s = st.replace("|", " ").trim().to_string();
+    let formats = [
+        "%d/%m/%Y %H:%M:%S", "%d-%m-%Y %H:%M:%S", "%d/%m/%Y %H:%M", "%d-%m-%Y %H:%M",
+        "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%m/%d/%Y %H:%M", "%d-%b-%y %H:%M",
+    ];
+    for fmt in &formats {
+        if let Ok(dt) = NaiveDateTime::parse_from_str(&s, fmt) {
+            return dt.format("%d-%m-%Y %H:%M:%S").to_string();
+        }
+    }
+    s.replace("/", "-")
 }
 
 fn fmt_wa_line(impact: &str, cluster: &str, sitename: &str, old: &str, new: &str, st_fmt: &str, remark: &str, show_remark: bool, category: &str, s_class: &str, fmt: &BroadcastFormat) -> (String, String) {
@@ -498,6 +520,7 @@ pub fn load_db_excel(state: State<'_, AppState>, path: String) -> Result<usize, 
     let mut site_id_idx: Option<usize> = None;
     let mut system_name_idx: Option<usize> = None;
     let mut new_site_idx: Option<usize> = None;
+    let mut new_te_idx = 117;
 
     for (i, row) in range.rows().enumerate() {
         if i == 0 {
@@ -514,14 +537,18 @@ pub fn load_db_excel(state: State<'_, AppState>, path: String) -> Result<usize, 
                 if h.contains("LONG") || h.contains("LON") { db_indices.insert("LON".to_string(), j); }
                 if h == "MC" { db_indices.insert("MC".to_string(), j); }
                 if h == "SITE NAME" { db_indices.insert("SITE_NAME".to_string(), j); }
+                if h == "OLD SITE ID" || h == "OLD_SITE_ID" || (h.contains("OLD") && h.contains("SITE")) { db_indices.insert("OLD_SITE".to_string(), j); }
                 
-                // Flexible TE Name detection
-                if h == "TE NAME" || h == "TE_NAME" || h == "PIC" { db_indices.insert("TE_NAME".to_string(), j); }
-                if h == "TE PHONE" || h == "TE_PHONE" { db_indices.insert("TE_PHONE".to_string(), j); }
-                if h == "TE EMAIL" || h == "TE_EMAIL" { db_indices.insert("TE_EMAIL".to_string(), j); }
-                if h.contains("FM") && h.contains("OFFICE") { db_indices.insert("FM_OFFICE".to_string(), j); }
-                if h.contains("HOST") && h.contains("NAME") { db_indices.insert("HOST_NAME".to_string(), j); }
-                if h == "TLP" { db_indices.insert("TLP".to_string(), j); }
+                // Flexible TE/CME Name detection (use first occurrence for Database Lookup tab)
+                if h == "TE NAME" || h == "TE_NAME" || h == "PIC" { db_indices.entry("TE_NAME".to_string()).or_insert(j); }
+                if h == "TE PHONE" || h == "TE_PHONE" || h == "TE PHONE NUMBER" { db_indices.entry("TE_PHONE".to_string()).or_insert(j); }
+                if h == "TE EMAIL" || h == "TE_EMAIL" { db_indices.entry("TE_EMAIL".to_string()).or_insert(j); }
+                if h == "CME NAME" || h == "CME_NAME" { db_indices.entry("CME_NAME".to_string()).or_insert(j); }
+                if h == "CME PHONE" || h == "CME_PHONE" || h == "CME PHONE NUMBER" { db_indices.entry("CME_PHONE".to_string()).or_insert(j); }
+                if h == "CME EMAIL" || h == "CME_EMAIL" { db_indices.entry("CME_EMAIL".to_string()).or_insert(j); }
+                if h == "FM OFFICE" || h == "FM_OFFICE" || h == "FM OFFICE NEW" { db_indices.entry("FM_OFFICE".to_string()).or_insert(j); }
+                if h.contains("HOST") && h.contains("NAME") { db_indices.entry("HOST_NAME".to_string()).or_insert(j); }
+                if h == "TLP" || h == "TLP NAME" || h == "TLP_NAME" { db_indices.entry("TLP".to_string()).or_insert(j); }
                 
                 headers.push(h_orig);
             }
@@ -529,9 +556,20 @@ pub fn load_db_excel(state: State<'_, AppState>, path: String) -> Result<usize, 
             if !db_indices.contains_key("TE_NAME") { db_indices.insert("TE_NAME".to_string(), 32); }
             if !db_indices.contains_key("TE_PHONE") { db_indices.insert("TE_PHONE".to_string(), 33); }
             if !db_indices.contains_key("TE_EMAIL") { db_indices.insert("TE_EMAIL".to_string(), 35); }
+            if !db_indices.contains_key("CME_NAME") { db_indices.insert("CME_NAME".to_string(), 28); }
+            if !db_indices.contains_key("CME_PHONE") { db_indices.insert("CME_PHONE".to_string(), 29); }
+            if !db_indices.contains_key("CME_EMAIL") { db_indices.insert("CME_EMAIL".to_string(), 31); }
             if !db_indices.contains_key("FM_OFFICE") { db_indices.insert("FM_OFFICE".to_string(), 11); }
             if !db_indices.contains_key("HOST_NAME") { db_indices.insert("HOST_NAME".to_string(), 132); }
             if !db_indices.contains_key("TLP") { db_indices.insert("TLP".to_string(), 50); }
+
+            // Once we have headers, find the last occurrence of "TE Name" for the NEW TE in te_cache
+            if let Some(pos) = headers.iter().rposition(|h| {
+                let hu = h.to_uppercase();
+                hu == "TE NAME" || hu == "TE_NAME"
+            }) {
+                new_te_idx = pos;
+            }
 
         } else {
             // OPTIMIZATION: Only convert cells to string once.
@@ -557,9 +595,8 @@ pub fn load_db_excel(state: State<'_, AppState>, path: String) -> Result<usize, 
             if !key_up.is_empty() && !db_lookup.contains_key(&key_up) {
                 db_lookup.insert(key_up.clone(), row_idx);
                 
-                // TE Cache using detected or fallback index
-                let te_idx = db_indices.get("TE_NAME").cloned().unwrap_or(32);
-                if let Some(te) = row_vec.get(te_idx).cloned() {
+                // TE Cache MUST use the NEW TE (last occurrence of TE Name)
+                if let Some(te) = row_vec.get(new_te_idx).cloned() {
                     let te = te.trim().to_string();
                     if !te.is_empty() && te != "nan" && te != "0" {
                         te_cache.insert(key_up, te);
@@ -606,6 +643,9 @@ pub fn lookup_site(state: State<'_, AppState>, site_id: String) -> Result<Option
             let te_idx = idx_cache.get("TE_NAME").cloned().unwrap_or(32);
             let ph_idx = idx_cache.get("TE_PHONE").cloned().unwrap_or(33);
             let em_idx = idx_cache.get("TE_EMAIL").cloned().unwrap_or(35);
+            let cme_name_idx = idx_cache.get("CME_NAME").cloned().unwrap_or(28);
+            let cme_phone_idx = idx_cache.get("CME_PHONE").cloned().unwrap_or(29);
+            let cme_email_idx = idx_cache.get("CME_EMAIL").cloned().unwrap_or(31);
             let host_idx = idx_cache.get("HOST_NAME").cloned().unwrap_or(132);
             let fm_idx = idx_cache.get("FM_OFFICE").cloned().unwrap_or(11);
             let tlp_idx = idx_cache.get("TLP").cloned().unwrap_or(50);
@@ -625,9 +665,9 @@ pub fn lookup_site(state: State<'_, AppState>, site_id: String) -> Result<Option
             out.insert("Latitude".to_string(), g("Lat"));
             out.insert("RTS Name".to_string(), g("RTS Name"));
             out.insert("RTS Phone".to_string(), g("RTS Phone Name"));
-            out.insert("CME Name".to_string(), g("CME Name"));
-            out.insert("CME Phone".to_string(), g("CME Phone Number"));
-            out.insert("CME Email".to_string(), g("CME Email"));
+            out.insert("CME Name".to_string(), g_idx(cme_name_idx));
+            out.insert("CME Phone".to_string(), g_idx(cme_phone_idx));
+            out.insert("CME Email".to_string(), g_idx(cme_email_idx));
             out.insert("Site Class".to_string(), g("Site Class"));
             out.insert("Hub Type".to_string(), g("Hub Type"));
             out.insert("Address".to_string(), g("Address"));
@@ -683,106 +723,196 @@ pub fn check_site_status(state: State<'_, AppState>) -> Result<Vec<SiteStatus>, 
     let db_te_lookup = state.db_te_cache.lock().unwrap();
     let idx_cache = state.db_indices.lock().unwrap();
     
-    if mdf.is_empty() || sdf.is_empty() { return Ok(Vec::new()); }
+    if mdf.is_empty() && sdf.is_empty() { return Ok(Vec::new()); }
     
     let vendor_idx = idx_cache.get("VENDOR").cloned();
+    let old_site_idx = idx_cache.get("OLD_SITE").cloned();
     
-    // Pre-calculate master_df indices
-    let mut m_ns_idx = None;
-    let mut m_st_idx = None;
-    let mut m_agg_idx = None;
-    let mut m_rts_idx = None;
-    let mut m_rem_idx = None;
-    let mut m_imp_idx = None;
-    
-    if let Some(first) = mdf.first() {
-        m_ns_idx = fc(first, &["NEW", "SITE"]);
-        m_st_idx = fc(first, &["START"]);
-        m_agg_idx = fc(first, &["AGG"]);
-        m_rts_idx = fc(first, &["RTS"]);
-        m_rem_idx = fc(first, &["REMARK"]);
-        m_imp_idx = fc(first, &["IMPACT"]);
-    }
-
-    // Build lookup map for master_df by NEW SITE
-    let mut m_lookup: HashMap<String, &HashMap<String, String>> = HashMap::new();
-    if let Some(ref ns_col) = m_ns_idx {
-        for row in mdf.iter() {
-            if let Some(ns) = row.get(ns_col) {
-                m_lookup.insert(ns.trim().to_uppercase(), row);
-            }
-        }
-    }
-
     let mut results = Vec::new();
     let mut last_fmt_idx: Option<usize> = None;
     let formats = ["%d/%m/%Y %H:%M:%S", "%d-%m-%Y %H:%M:%S", "%d/%m/%Y %H:%M", "%d-%m-%Y %H:%M", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%m/%d/%Y %H:%M", "%d-%b-%y %H:%M"];
 
-    for row in sdf.iter() {
-        let ns = get_val(row, &["NEW", "SITE"]);
-        if ns.is_empty() || ns == "0" || ns.to_lowercase() == "nan" { continue; }
-        
-        let ns_upper = ns.trim().to_uppercase();
-        let nm = get_val(row, &["SITE", "NAME"]);
-        let cl = get_val(row, &["CLUSTER"]);
-        let ol = get_val(row, &["OLD", "SITE"]);
-        let cat = get_val(row, &["CATEGORY"]);
-        let s_cls = get_val(row, &["SITE", "CLASS"]);
-        
-        let pic = db_te_lookup.get(&ns_upper).cloned().unwrap_or_default();
-        let vendor = if let Some(idx) = vendor_idx { 
-            db_lookup.get(&ns_upper)
-                .and_then(|&row_idx| db_df.get(row_idx))
-                .and_then(|r| r.get(idx))
-                .cloned()
-                .unwrap_or_default() 
-        } else { String::new() };
-        
-        let m_row_opt = m_lookup.get(&ns_upper);
-        let up = m_row_opt.is_none();
-        
-        let (st, agg, rts, rem, imp) = if !up {
-            let m_row = m_row_opt.unwrap();
-            let mut agging = m_agg_idx.as_ref().and_then(|k| m_row.get(k)).cloned().unwrap_or_default();
-            let start = m_st_idx.as_ref().and_then(|k| m_row.get(k)).cloned().unwrap_or_default();
-            if agging.is_empty() { agging = calc_dur(&start); }
-            (
-                start, 
-                agging, 
-                m_rts_idx.as_ref().and_then(|k| m_row.get(k)).cloned().unwrap_or_default(),
-                m_rem_idx.as_ref().and_then(|k| m_row.get(k)).cloned().unwrap_or_default(),
-                m_imp_idx.as_ref().and_then(|k| m_row.get(k)).cloned().unwrap_or_default()
-            )
-        } else {
-            (get_val(row, &["START"]), get_val(row, &["AGG"]), get_val(row, &["RTS"]), get_val(row, &["REMARK"]), get_val(row, &["IMPACT"]))
-        };
-        
-        // Optimized Date Parsing
-        let s_parsed = st.replace("|", " ").trim().to_string();
-        let s_parsed = if s_parsed.to_lowercase().ends_with(" p") { s_parsed[..s_parsed.len() - 2].trim().to_string() } else if s_parsed.to_lowercase().ends_with("p") { s_parsed[..s_parsed.len() - 1].trim().to_string() } else { s_parsed };
-        
-        let mut start_ts = 0;
-        if !s_parsed.is_empty() {
-            // Try last successful format first for performance
-            if let Some(idx) = last_fmt_idx {
-                if let Ok(dt) = NaiveDateTime::parse_from_str(&s_parsed, formats[idx]) {
-                    start_ts = dt.and_utc().timestamp();
-                }
-            }
-            
-            if start_ts == 0 {
-                for (idx, fmt) in formats.iter().enumerate() {
-                    if let Ok(dt) = NaiveDateTime::parse_from_str(&s_parsed, fmt) {
-                        start_ts = dt.and_utc().timestamp();
-                        last_fmt_idx = Some(idx);
-                        break;
+    // 1. Collect all active DOWN sites from master_df (mdf)
+    let mut m_site_ids = HashSet::new();
+    let mut m_ns_col = None;
+    if let Some(first) = mdf.first() {
+        m_ns_col = fc(first, &["NEW", "SITE"]);
+    }
+
+    if let Some(ref ns_col) = m_ns_col {
+        for row in mdf.iter() {
+            if let Some(ns) = row.get(ns_col) {
+                let ns_val = ns.trim().to_string();
+                if ns_val.is_empty() || ns_val == "0" || ns_val.to_lowercase() == "nan" { continue; }
+                let ns_upper = ns_val.to_uppercase();
+                m_site_ids.insert(ns_upper.clone());
+
+                let nm = get_val(row, &["SITE", "NAME"]);
+                let cl = get_val(row, &["CLUSTER"]);
+                let mut ol = get_val(row, &["OLD", "SITE"]);
+                if ol.is_empty() {
+                    if let Some(idx) = old_site_idx {
+                        ol = db_lookup.get(&ns_upper)
+                            .and_then(|&row_idx| db_df.get(row_idx))
+                            .and_then(|r| r.get(idx))
+                            .cloned()
+                            .unwrap_or_default();
                     }
+                }
+                let cat = get_val(row, &["CATEGORY"]);
+                let s_cls = get_val(row, &["SITE", "CLASS"]);
+                
+                let pic = db_te_lookup.get(&ns_upper).cloned().unwrap_or_default();
+                let vendor = if let Some(idx) = vendor_idx { 
+                    db_lookup.get(&ns_upper)
+                        .and_then(|&row_idx| db_df.get(row_idx))
+                        .and_then(|r| r.get(idx))
+                        .cloned()
+                        .unwrap_or_default() 
+                } else { String::new() };
+
+                let st = get_val(row, &["START"]);
+                let mut agg = get_val(row, &["AGG"]);
+                if agg.is_empty() { agg = calc_dur(&st); }
+                let rts = get_val(row, &["RTS"]);
+                let rem = get_val(row, &["REMARK"]);
+                let imp = get_val(row, &["IMPACT"]);
+
+                // Optimized Date Parsing
+                let s_parsed = st.replace("|", " ").trim().to_string();
+                let s_parsed = if s_parsed.to_lowercase().ends_with(" p") { s_parsed[..s_parsed.len() - 2].trim().to_string() } else if s_parsed.to_lowercase().ends_with("p") { s_parsed[..s_parsed.len() - 1].trim().to_string() } else { s_parsed };
+                
+                let mut start_ts = 0;
+                if !s_parsed.is_empty() {
+                    if let Some(idx) = last_fmt_idx {
+                        if let Ok(dt) = NaiveDateTime::parse_from_str(&s_parsed, formats[idx]) {
+                            start_ts = dt.and_utc().timestamp();
+                        }
+                    }
+                    if start_ts == 0 {
+                        for (idx, fmt) in formats.iter().enumerate() {
+                            if let Ok(dt) = NaiveDateTime::parse_from_str(&s_parsed, fmt) {
+                                start_ts = dt.and_utc().timestamp();
+                                last_fmt_idx = Some(idx);
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                results.push(SiteStatus {
+                    status: "DOWN".to_string(),
+                    icon: "❌".to_string(),
+                    new_site: ns_val,
+                    site_name: nm,
+                    cluster: cl,
+                    impact: imp,
+                    rts,
+                    start_time: fmt_st(&st),
+                    agging: agg,
+                    remark: rem,
+                    start_timestamp: start_ts,
+                    old_site: ol,
+                    category: if cat.is_empty() { get_val(row, &["CATEG"]) } else { cat },
+                    site_class: s_cls,
+                    pic,
+                    vendor
+                });
+            }
+        }
+    }
+
+    // 2. Collect all recovered UP sites from sub_master_df (sdf) which are no longer in mdf
+    let mut s_ns_col = None;
+    if let Some(first) = sdf.first() {
+        s_ns_col = fc(first, &["NEW", "SITE"]);
+    }
+
+    if let Some(ref ns_col) = s_ns_col {
+        for row in sdf.iter() {
+            if let Some(ns) = row.get(ns_col) {
+                let ns_val = ns.trim().to_string();
+                if ns_val.is_empty() || ns_val == "0" || ns_val.to_lowercase() == "nan" { continue; }
+                let ns_upper = ns_val.to_uppercase();
+
+                // If it is NOT in m_site_ids, it means it was recovered (went UP)!
+                if !m_site_ids.contains(&ns_upper) {
+                    let nm = get_val(row, &["SITE", "NAME"]);
+                    let cl = get_val(row, &["CLUSTER"]);
+                    let mut ol = get_val(row, &["OLD", "SITE"]);
+                    if ol.is_empty() {
+                        if let Some(idx) = old_site_idx {
+                            ol = db_lookup.get(&ns_upper)
+                                .and_then(|&row_idx| db_df.get(row_idx))
+                                .and_then(|r| r.get(idx))
+                                .cloned()
+                                .unwrap_or_default();
+                        }
+                    }
+                    let cat = get_val(row, &["CATEGORY"]);
+                    let s_cls = get_val(row, &["SITE", "CLASS"]);
+                    
+                    let pic = db_te_lookup.get(&ns_upper).cloned().unwrap_or_default();
+                    let vendor = if let Some(idx) = vendor_idx { 
+                        db_lookup.get(&ns_upper)
+                            .and_then(|&row_idx| db_df.get(row_idx))
+                            .and_then(|r| r.get(idx))
+                            .cloned()
+                            .unwrap_or_default() 
+                    } else { String::new() };
+
+                    let st = get_val(row, &["START"]);
+                    let mut agg = get_val(row, &["AGG"]);
+                    if agg.is_empty() { agg = calc_dur(&st); }
+                    let rts = get_val(row, &["RTS"]);
+                    let rem = get_val(row, &["REMARK"]);
+                    let imp = get_val(row, &["IMPACT"]);
+
+                    // Optimized Date Parsing
+                    let s_parsed = st.replace("|", " ").trim().to_string();
+                    let s_parsed = if s_parsed.to_lowercase().ends_with(" p") { s_parsed[..s_parsed.len() - 2].trim().to_string() } else if s_parsed.to_lowercase().ends_with("p") { s_parsed[..s_parsed.len() - 1].trim().to_string() } else { s_parsed };
+                    
+                    let mut start_ts = 0;
+                    if !s_parsed.is_empty() {
+                        if let Some(idx) = last_fmt_idx {
+                            if let Ok(dt) = NaiveDateTime::parse_from_str(&s_parsed, formats[idx]) {
+                                start_ts = dt.and_utc().timestamp();
+                            }
+                        }
+                        if start_ts == 0 {
+                            for (idx, fmt) in formats.iter().enumerate() {
+                                if let Ok(dt) = NaiveDateTime::parse_from_str(&s_parsed, fmt) {
+                                    start_ts = dt.and_utc().timestamp();
+                                    last_fmt_idx = Some(idx);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    results.push(SiteStatus {
+                        status: "UP".to_string(),
+                        icon: "✅".to_string(),
+                        new_site: ns_val,
+                        site_name: nm,
+                        cluster: cl,
+                        impact: imp,
+                        rts,
+                        start_time: fmt_st(&st),
+                        agging: agg,
+                        remark: rem,
+                        start_timestamp: start_ts,
+                        old_site: ol,
+                        category: if cat.is_empty() { get_val(row, &["CATEG"]) } else { cat },
+                        site_class: s_cls,
+                        pic,
+                        vendor
+                    });
                 }
             }
         }
-        
-        results.push(SiteStatus { status: if up { "UP".to_string() } else { "DOWN".to_string() }, icon: if up { "✅".to_string() } else { "❌".to_string() }, new_site: ns, site_name: nm, cluster: cl, impact: imp, rts, start_time: st, agging: agg, remark: rem, start_timestamp: start_ts, old_site: ol, category: if cat.is_empty() { get_val(row, &["CATEG"]) } else { cat }, site_class: s_cls, pic, vendor });
     }
+
     Ok(results)
 }
 
@@ -842,6 +972,9 @@ pub fn update_site_db(state: State<'_, AppState>, edit_data: SiteEditData) -> Re
                 update_field(row_vec, "TE_NAME", &edit_data.te_name);
                 update_field(row_vec, "TE_PHONE", &edit_data.te_phone);
                 update_field(row_vec, "TE_EMAIL", &edit_data.te_email);
+                update_field(row_vec, "CME_NAME", &edit_data.cme_name);
+                update_field(row_vec, "CME_PHONE", &edit_data.cme_phone);
+                update_field(row_vec, "CME_EMAIL", &edit_data.cme_email);
                 update_field(row_vec, "FM_OFFICE", &edit_data.fm_office);
                 update_field(row_vec, "HOST_NAME", &edit_data.host_name);
                 update_field(row_vec, "TLP", &edit_data.tlp);

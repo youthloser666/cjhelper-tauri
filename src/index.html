@@ -382,7 +382,8 @@
           <div class="msg-head" style="margin-bottom:7px;border-radius:var(--r);flex-shrink:0;flex-wrap:wrap;gap:6px;">
             <span style="font-weight:700;font-size:13px;color:var(--txt-1);">🗺 Site Maps</span>
             <div style="display:flex;gap:4px;align-items:center;margin-left:auto;">
-              <input type="text" id="map-site-input" class="sinput" placeholder="Site ID / Alamat / Lat,Lon..." style="width:220px;">
+              <input type="text" id="map-site-input" class="sinput" placeholder="Site ID / Alamat / Lat,Lon..."
+                style="width:220px;">
               <button class="tbtn-p" id="btn-map-search">🔍 Cari</button>
               <button class="tbtn" id="btn-map-street">🛣️ Street</button>
               <div style="width:1px;height:18px;background:var(--bdr);margin:0 4px;"></div>
@@ -390,18 +391,22 @@
               <button class="tbtn-clr" id="btn-map-clear">✕ Clear</button>
             </div>
           </div>
-          <div class="map-wrap" style="position:relative;z-index:1;flex:1;border-radius:var(--r);overflow:hidden;min-height:300px;display:flex;">
-            <div id="map-container" style="flex:1;background:#0c0c0e;"></div>
-            
+          <div class="map-wrap"
+            style="position:relative;z-index:1;flex:1;border-radius:var(--r);overflow:hidden;min-height:300px;display:flex;">
+            <div id="map-container" style="flex:1;"></div>
+
             <!-- Nearest BTS Panel -->
-            <div id="map-nearest-panel" class="hidden" style="position:absolute;top:10px;right:10px;width:300px;background:var(--bg-card);border:1px solid var(--bdr);border-radius:var(--r);z-index:1000;box-shadow:0 4px 15px rgba(0,0,0,0.5);display:flex;flex-direction:column;max-height:90%;overflow:hidden;">
-               <div style="padding:8px 12px;background:var(--bg-surface);border-bottom:1px solid var(--bdr);font-weight:bold;color:var(--txt-1);display:flex;justify-content:space-between;align-items:center;">
-                  <span style="font-size:11.5px;">📡 5 BTS Terdekat</span>
-                  <button class="tbtn-clr" id="btn-close-nearest" style="padding:2px 6px;">✕</button>
-               </div>
-               <div id="map-nearest-list" style="overflow-y:auto;flex:1;padding:8px;display:flex;flex-direction:column;gap:6px;font-size:11px;">
-                  <!-- Populated by JS -->
-               </div>
+            <div id="map-nearest-panel" class="hidden"
+              style="position:absolute;top:10px;right:10px;width:300px;background:var(--bg-card);border:1px solid var(--bdr);border-radius:var(--r);z-index:1000;box-shadow:0 4px 15px rgba(0,0,0,0.5);display:flex;flex-direction:column;max-height:90%;overflow:hidden;">
+              <div
+                style="padding:8px 12px;background:var(--bg-surface);border-bottom:1px solid var(--bdr);font-weight:bold;color:var(--txt-1);display:flex;justify-content:space-between;align-items:center;">
+                <span style="font-size:11.5px;">📡 5 BTS Terdekat</span>
+                <button class="tbtn-clr" id="btn-close-nearest" style="padding:2px 6px;">✕</button>
+              </div>
+              <div id="map-nearest-list"
+                style="overflow-y:auto;flex:1;padding:8px;display:flex;flex-direction:column;gap:6px;font-size:11px;">
+                <!-- Populated by JS -->
+              </div>
             </div>
           </div>
         </div>
@@ -664,46 +669,56 @@
                 Perubahan</button>
             </div>
           </div>
-          
+
           <!-- 4. System Sub-tab -->
-          <div id="subtab-system" class="subtab-pane hidden" style="flex-direction:column;flex:1;display:flex;overflow-y:auto;gap:10px;">
+          <div id="subtab-system" class="subtab-pane hidden"
+            style="flex-direction:column;flex:1;display:flex;overflow-y:auto;gap:10px;">
             <div class="msg-head" style="margin-bottom:7px;border-radius:var(--r);">
               <span style="color:var(--accent-lit);font-weight:700;font-size:12.5px;">⚙️ System & Updates</span>
             </div>
-            
-            <div class="ib" style="padding:15px;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:200px;text-align:center;">
+
+            <div class="ib"
+              style="padding:15px;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:200px;text-align:center;">
               <div style="font-size:40px;margin-bottom:15px;">🚀</div>
-              <h3 style="margin:0 0 5px 0;color:var(--txt-1);">CJHelper Versi <span id="app-version-display">0.1.0</span></h3>
-              <p style="font-size:12px;color:var(--txt-3);margin-bottom:20px;">Pastikan Anda selalu menggunakan versi terbaru untuk mendapatkan fitur terkini dan perbaikan bug.</p>
-              
-              <div id="update-status-container" style="margin-bottom:20px;padding:10px 20px;border-radius:var(--r);background:rgba(255,255,255,0.05);min-width:300px;">
-                <span id="update-status-text" style="font-size:13px;font-weight:700;color:var(--txt-2);">Klik tombol di bawah untuk cek update</span>
+              <h3 style="margin:0 0 5px 0;color:var(--txt-1);">CJHelper Versi <span
+                  id="app-version-display">0.1.0</span></h3>
+              <p style="font-size:12px;color:var(--txt-3);margin-bottom:20px;">Pastikan Anda selalu menggunakan versi
+                terbaru untuk mendapatkan fitur terkini dan perbaikan bug.</p>
+
+              <div id="update-status-container"
+                style="margin-bottom:20px;padding:10px 20px;border-radius:var(--r);background:rgba(255,255,255,0.05);min-width:300px;">
+                <span id="update-status-text" style="font-size:13px;font-weight:700;color:var(--txt-2);">Klik tombol di
+                  bawah untuk cek update</span>
               </div>
-              
+
               <div style="display:flex;gap:10px;">
                 <button id="btn-check-update" class="tbtn-p" style="padding:8px 20px;">🔍 Cek Update Sekarang</button>
-                <button id="btn-install-update" class="tbtn-load hidden" style="padding:8px 20px;">📥 Download & Install</button>
+                <button id="btn-install-update" class="tbtn-load hidden" style="padding:8px 20px;">📥 Download &
+                  Install</button>
               </div>
-              
-              <div id="update-progress-bar-container" class="hidden" style="width:100%;max-width:400px;margin-top:20px;">
-                <div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:4px;color:var(--txt-3);">
-                    <span>Downloading...</span>
-                    <span id="update-progress-percent">0%</span>
+
+              <div id="update-progress-bar-container" class="hidden"
+                style="width:100%;max-width:400px;margin-top:20px;">
+                <div
+                  style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:4px;color:var(--txt-3);">
+                  <span>Downloading...</span>
+                  <span id="update-progress-percent">0%</span>
                 </div>
                 <div style="width:100%;height:8px;background:rgba(255,255,255,0.1);border-radius:4px;overflow:hidden;">
-                    <div id="update-progress-fill" style="width:0%;height:100%;background:var(--accent);transition:width 0.3s ease;"></div>
+                  <div id="update-progress-fill"
+                    style="width:0%;height:100%;background:var(--accent);transition:width 0.3s ease;"></div>
                 </div>
               </div>
             </div>
 
             <div class="ib">
-                <div class="ib-h">ℹ️ Informasi Aplikasi</div>
-                <div style="padding:10px;font-size:12px;color:var(--txt-3);line-height:1.6;">
-                    • Nama: CJHelper Tauri<br>
-                    • Framework: Tauri 2.0 (Rust + JS)<br>
-                    • Fitur: Data Processing, WA Broadcast, Maps Integration, DB Management<br>
-                    • Developer: Antigravity Team
-                </div>
+              <div class="ib-h">ℹ️ Informasi Aplikasi</div>
+              <div style="padding:10px;font-size:12px;color:var(--txt-3);line-height:1.6;">
+                • Nama: CJHelper Tauri<br>
+                • Framework: Tauri 2.0 (Rust + JS)<br>
+                • Fitur: Data Processing, WA Broadcast, Maps Integration, DB Management<br>
+                • Developer: youthloser666
+              </div>
             </div>
           </div>
 
@@ -713,15 +728,18 @@
     </div>
   </div>
   <!-- WA QR Modal -->
-  <div id="wa-qr-modal" class="modal hidden" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(5px);">
-    <div style="background:var(--bg-card);border:1px solid var(--bdr);border-radius:var(--r);width:360px;padding:25px;display:flex;flex-direction:column;align-items:center;box-shadow:0 15px 50px rgba(0,0,0,0.5);">
+  <div id="wa-qr-modal" class="modal hidden"
+    style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:9999;align-items:center;justify-content:center;backdrop-filter:blur(5px);">
+    <div
+      style="background:var(--bg-card);border:1px solid var(--bdr);border-radius:var(--r);width:360px;padding:25px;display:flex;flex-direction:column;align-items:center;box-shadow:0 15px 50px rgba(0,0,0,0.5);">
       <h3 style="margin:0 0 10px 0;color:var(--txt-1);font-size:16px;">🔗 Scan QR WhatsApp</h3>
       <p style="font-size:12px;color:var(--txt-3);text-align:center;line-height:1.5;margin-bottom:20px;">
         1. Buka WhatsApp di HP<br>
         2. Menu (⋮) atau Settings (⚙️) &gt; Linked Devices<br>
         3. Link a Device &gt; Scan QR di bawah
       </p>
-      <div id="wa-qr-container" style="background:white;padding:15px;border-radius:10px;margin-bottom:20px;min-width:200px;min-height:200px;display:flex;align-items:center;justify-content:center;">
+      <div id="wa-qr-container"
+        style="background:white;padding:15px;border-radius:10px;margin-bottom:20px;min-width:200px;min-height:200px;display:flex;align-items:center;justify-content:center;">
         <img id="wa-qr-img" src="" alt="QR Code" style="width:200px;height:200px;">
       </div>
       <div style="display:flex;gap:10px;width:100%;">
