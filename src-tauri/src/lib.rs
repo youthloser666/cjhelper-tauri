@@ -19,6 +19,7 @@ pub fn run() {
             wa_groups,
             wa_broadcast,
             wa_start_server,
+            wa_logout,
             pick_db_file,
             load_db_excel,
             lookup_site,

@@ -478,8 +478,38 @@ pub async fn wa_broadcast(targets: Vec<Value>, delay_ms: Option<u64>) -> Result<
 pub fn wa_start_server() -> Result<(), String> {
     use std::process::{Command, Stdio};
     let wa_dir = std::path::Path::new("d:\\WEB\\PROJECT V2\\wa_server");
-    Command::new("node").arg("server.js").current_dir(wa_dir).stdout(Stdio::null()).stderr(Stdio::null()).spawn().map_err(|e| format!("Failed to start WA server: {}", e))?;
+    
+    #[cfg(target_os = "windows")]
+    {
+        Command::new("cmd")
+            .args(&["/C", "node server.js"])
+            .current_dir(wa_dir)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|e| format!("Failed to start WA server on Windows: {}", e))?;
+    }
+    
+    #[cfg(not(target_os = "windows"))]
+    {
+        Command::new("node")
+            .arg("server.js")
+            .current_dir(wa_dir)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|e| format!("Failed to start WA server: {}", e))?;
+    }
+    
     Ok(())
+}
+
+#[tauri::command]
+pub async fn wa_logout() -> Result<Value, String> {
+    let client = reqwest::Client::new();
+    let res = client.post("http://127.0.0.1:3579/logout").send().await.map_err(|e| e.to_string())?;
+    let json = res.json::<Value>().await.map_err(|e| e.to_string())?;
+    Ok(json)
 }
 
 // -----------------------------------------
@@ -520,7 +550,6 @@ pub fn load_db_excel(state: State<'_, AppState>, path: String) -> Result<usize, 
     let mut site_id_idx: Option<usize> = None;
     let mut system_name_idx: Option<usize> = None;
     let mut new_site_idx: Option<usize> = None;
-    let mut new_te_idx = 117;
 
     for (i, row) in range.rows().enumerate() {
         if i == 0 {
@@ -563,14 +592,6 @@ pub fn load_db_excel(state: State<'_, AppState>, path: String) -> Result<usize, 
             if !db_indices.contains_key("HOST_NAME") { db_indices.insert("HOST_NAME".to_string(), 132); }
             if !db_indices.contains_key("TLP") { db_indices.insert("TLP".to_string(), 50); }
 
-            // Once we have headers, find the last occurrence of "TE Name" for the NEW TE in te_cache
-            if let Some(pos) = headers.iter().rposition(|h| {
-                let hu = h.to_uppercase();
-                hu == "TE NAME" || hu == "TE_NAME"
-            }) {
-                new_te_idx = pos;
-            }
-
         } else {
             // OPTIMIZATION: Only convert cells to string once.
             let mut row_vec = Vec::with_capacity(cols_count);
@@ -595,8 +616,9 @@ pub fn load_db_excel(state: State<'_, AppState>, path: String) -> Result<usize, 
             if !key_up.is_empty() && !db_lookup.contains_key(&key_up) {
                 db_lookup.insert(key_up.clone(), row_idx);
                 
-                // TE Cache MUST use the NEW TE (last occurrence of TE Name)
-                if let Some(te) = row_vec.get(new_te_idx).cloned() {
+                // TE Cache uses the exact same TE Name index as shown in the database lookup
+                let te_idx = db_indices.get("TE_NAME").cloned().unwrap_or(32);
+                if let Some(te) = row_vec.get(te_idx).cloned() {
                     let te = te.trim().to_string();
                     if !te.is_empty() && te != "nan" && te != "0" {
                         te_cache.insert(key_up, te);
@@ -920,18 +942,41 @@ pub fn check_site_status(state: State<'_, AppState>) -> Result<Vec<SiteStatus>, 
 // Others: WA Management & DB Edit
 // -----------------------------------------
 #[tauri::command]
-pub fn get_wa_config(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
-    let config = state.wa_config.lock().unwrap().clone();
-    Ok(config)
+pub fn get_wa_config(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    use tauri::Manager;
+    let mut config = state.wa_config.lock().unwrap();
+    if config["saved_groups"].as_array().map_or(true, |a| a.is_empty()) {
+        if let Ok(path) = app.path().app_config_dir() {
+            let file_path = path.join("wa_config.json");
+            if file_path.exists() {
+                if let Ok(content) = std::fs::read_to_string(&file_path) {
+                    if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
+                        *config = val;
+                    }
+                }
+            }
+        }
+    }
+    Ok(config.clone())
 }
 
 #[tauri::command]
-pub fn save_wa_groups(state: State<'_, AppState>, saved_groups: Vec<serde_json::Value>) -> Result<(), String> {
+pub fn save_wa_groups(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    saved_groups: Vec<serde_json::Value>,
+) -> Result<(), String> {
+    use tauri::Manager;
     let mut config = state.wa_config.lock().unwrap();
     config["saved_groups"] = serde_json::Value::Array(saved_groups);
-    use std::fs;
-    let path = std::path::Path::new("wa_config.json");
-    if let Ok(json_str) = serde_json::to_string_pretty(&*config) { let _ = fs::write(path, json_str); }
+    
+    if let Ok(path) = app.path().app_config_dir() {
+        let _ = std::fs::create_dir_all(&path);
+        let file_path = path.join("wa_config.json");
+        if let Ok(json_str) = serde_json::to_string_pretty(&*config) {
+            let _ = std::fs::write(file_path, json_str);
+        }
+    }
     Ok(())
 }
 
@@ -999,6 +1044,15 @@ pub fn update_site_db(state: State<'_, AppState>, edit_data: SiteEditData) -> Re
                 try_update_raw(row_vec, "CME PHONE", &edit_data.cme_phone);
                 try_update_raw(row_vec, "CME EMAIL", &edit_data.cme_email);
                 
+                // Update active in-memory TE cache
+                let mut te_cache = state.db_te_cache.lock().unwrap();
+                let te = edit_data.te_name.trim().to_string();
+                if !te.is_empty() && te != "nan" && te != "0" {
+                    te_cache.insert(sid_upper, te);
+                } else {
+                    te_cache.remove(&sid_upper);
+                }
+
                 return Ok(());
             }
         }
@@ -1061,20 +1115,51 @@ pub fn find_nearest_sites(state: State<'_, AppState>, lat: f64, lon: f64, limit:
     if lat_idx.is_none() || lon_idx.is_none() { return Ok(Vec::new()); }
     let (lat_idx, lon_idx) = (lat_idx.unwrap(), lon_idx.unwrap());
     
+    // Find Site ID column index case-insensitively
+    let sid_idx = headers.iter().position(|h| {
+        let hu = h.to_uppercase();
+        hu.contains("SITE") && hu.contains("ID") && hu.contains("MSH")
+    }).or_else(|| {
+        headers.iter().position(|h| {
+            let hu = h.to_uppercase();
+            hu.contains("SITE ID") || hu.contains("NEW SITE")
+        })
+    });
+    
     let mut distances = Vec::new();
+    let mut seen_sids = HashSet::new();
+    
     for row in db.iter() {
         let (row_lat_str, row_lon_str) = (row.get(lat_idx).cloned().unwrap_or_default(), row.get(lon_idx).cloned().unwrap_or_default());
         let (site_lat, site_lon) = (row_lat_str.parse::<f64>().unwrap_or(0.0), row_lon_str.parse::<f64>().unwrap_or(0.0));
-        if site_lat != 0.0 && site_lon != 0.0 { distances.push((haversine(lat, lon, site_lat, site_lon), row, site_lat, site_lon)); }
+        
+        if site_lat != 0.0 && site_lon != 0.0 {
+            let sid = sid_idx.and_then(|i| row.get(i)).cloned().unwrap_or_default();
+            let sid_upper = sid.trim().to_uppercase();
+            
+            // Skip invalid PLMN or MRBTS site IDs to only show clean New Site IDs
+            if sid_upper.contains("PLMN") || sid_upper.contains("MRBTS") {
+                continue;
+            }
+            
+            // Deduplicate by Site ID to prevent double/multiple outputs for the same physical site
+            if !sid_upper.is_empty() {
+                if seen_sids.contains(&sid_upper) {
+                    continue;
+                }
+                seen_sids.insert(sid_upper.clone());
+            }
+            
+            distances.push((haversine(lat, lon, site_lat, site_lon), row, site_lat, site_lon, sid));
+        }
     }
+    
     distances.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
-    let top_k = distances.into_iter().take(limit).map(|(dist, row, r_lat, r_lon)| {
+    
+    let top_k = distances.into_iter().take(limit).map(|(dist, row, r_lat, r_lon, sid)| {
         let site_name_idx = idx_cache.get("SITE_NAME").cloned();
         let mc_idx = idx_cache.get("MC").cloned();
         
-        let sid_idx = headers.iter().position(|h| h.contains("SITE ID MSH"));
-        
-        let sid = sid_idx.and_then(|i| row.get(i)).cloned().unwrap_or_default();
         let site_name = site_name_idx.and_then(|i| row.get(i)).cloned().unwrap_or_default();
         let cluster = mc_idx.and_then(|i| row.get(i)).cloned().unwrap_or_default();
         
@@ -1084,5 +1169,6 @@ pub fn find_nearest_sites(state: State<'_, AppState>, lat: f64, lon: f64, limit:
         
         serde_json::json!({ "site_id": sid, "site_name": site_name, "cluster": cluster, "rts": rts, "lat": r_lat, "lon": r_lon, "distance_km": dist })
     }).collect();
+    
     Ok(top_k)
 }

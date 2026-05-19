@@ -11,6 +11,7 @@
     integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
     integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <link rel="stylesheet" href="./styles.css" />
 </head>
 
@@ -208,6 +209,9 @@
                   <button class="tbtn" id="btn-wa-status" style="font-size:9.5px;padding:2px 6px;">Cek Status</button>
                   <button class="tbtn-a" id="btn-wa-start" style="font-size:9.5px;padding:2px 6px;">Start
                     Server</button>
+                  <button class="tbtn-clr" id="btn-wa-reset"
+                    style="font-size:9.5px;padding:2px 6px;background:var(--red-d);border-color:rgba(201,95,107,.3);color:var(--red);">🔌
+                    Reset WA</button>
                 </div>
               </div>
               <div
@@ -386,6 +390,9 @@
                 style="width:220px;">
               <button class="tbtn-p" id="btn-map-search">🔍 Cari</button>
               <button class="tbtn" id="btn-map-street">🛣️ Street</button>
+              <button class="tbtn" id="btn-map-screenshot"
+                style="border-color: rgba(74,130,196,.4); background: var(--blu-d); color: var(--blu);">📸
+                Screenshot</button>
               <div style="width:1px;height:18px;background:var(--bdr);margin:0 4px;"></div>
               <button class="tbtn-a" id="btn-map-plot-down">📍 Plot DOWN</button>
               <button class="tbtn-clr" id="btn-map-clear">✕ Clear</button>

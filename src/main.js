@@ -1,6 +1,14 @@
 const tauriCore = window.__TAURI__ ? window.__TAURI__.core : null;
 const invoke = tauriCore ? tauriCore.invoke : null;
-const check = window.__TAURI__ && window.__TAURI__.updater ? window.__TAURI__.updater.check : null;
+let checkFn = null;
+if (window.__TAURI__) {
+  if (window.__TAURI__.updater && typeof window.__TAURI__.updater.check === 'function') {
+    checkFn = window.__TAURI__.updater.check;
+  } else if (window.__TAURI__.plugins && window.__TAURI__.plugins.updater && typeof window.__TAURI__.plugins.updater.check === 'function') {
+    checkFn = window.__TAURI__.plugins.updater.check;
+  }
+}
+const check = checkFn;
 const getVersion = window.__TAURI__ && window.__TAURI__.app ? window.__TAURI__.app.getVersion : null;
 
 // Theme logic
@@ -462,6 +470,27 @@ startWaPolling();
 if (btnWaStart) {
   btnWaStart.addEventListener('click', async () => {
     try {
+      if (waStatusText) waStatusText.textContent = "Checking...";
+      
+      // Check if server is already running
+      let isActive = false;
+      try {
+        const check = await invoke('wa_status');
+        if (check && (check.status === "CONNECTED" || check.status === "QR_READY")) {
+          isActive = true;
+        }
+      } catch (e) {
+        // Server not running
+      }
+      
+      if (isActive) {
+        if (waStatusText) {
+          waStatusText.textContent = "Server already active!";
+          waStatusText.className = "text-xs text-success font-bold";
+        }
+        return;
+      }
+      
       if (waStatusText) waStatusText.textContent = "Starting...";
       await invoke('wa_start_server');
       if (waStatusText) {
@@ -472,6 +501,40 @@ if (btnWaStart) {
       if (waStatusText) {
         waStatusText.textContent = "Error: " + err;
         waStatusText.className = "text-xs text-error font-bold";
+      }
+    }
+  });
+}
+
+const btnWaReset = document.getElementById('btn-wa-reset');
+if (btnWaReset) {
+  btnWaReset.addEventListener('click', async () => {
+    if (!confirm("Apakah Anda yakin ingin me-reset koneksi / logout WhatsApp? Session akan dihapus dan Anda perlu melakukan scan QR code kembali.")) return;
+    
+    try {
+      if (waStatusText) waStatusText.textContent = "Resetting...";
+      const oldText = btnWaReset.innerHTML;
+      btnWaReset.disabled = true;
+      btnWaReset.innerHTML = "⏳ ...";
+      
+      await invoke('wa_logout');
+      
+      if (waStatusText) {
+        waStatusText.textContent = "LOGGED OUT";
+        waStatusText.style.color = "var(--red)";
+      }
+      
+      alert("WhatsApp session berhasil di-logout / reset!");
+      btnWaReset.innerHTML = oldText;
+      btnWaReset.disabled = false;
+      
+      // Auto-poll status
+      await checkWaStatus();
+    } catch (err) {
+      alert("Gagal me-reset WA: " + err);
+      if (btnWaReset) {
+        btnWaReset.innerHTML = "🔌 Reset WA";
+        btnWaReset.disabled = false;
       }
     }
   });
@@ -537,6 +600,12 @@ function generateShareWA(statuses) {
       const isCritical = s.site_class.toUpperCase().includes('CRITICAL');
       const icon = (isHub || isCritical) ? "⚠️" : (fmtBc.icon_down || "▶️");
       
+      let entryTime = s.start_time || "";
+      if (s.start_timestamp > 0) {
+        const d = new Date(s.start_timestamp * 1000);
+        entryTime = `${String(d.getUTCDate()).padStart(2,'0')}/${String(d.getUTCMonth()+1).padStart(2,'0')}/${d.getUTCFullYear()} | ${String(d.getUTCHours()).padStart(2,'0')}:${String(d.getUTCMinutes()).padStart(2,'0')}`;
+      }
+      
       const ctx = {
         icon: icon,
         rts: s.rts || "",
@@ -544,7 +613,7 @@ function generateShareWA(statuses) {
         new: s.new_site || "",
         sitename: s.site_name || "",
         old: "", // Python broadcast tab explicitly leaves old empty
-        time: s.start_time || "",
+        time: entryTime,
         remark: s.remark || "",
         category: s.category || "",
         type: isFully ? "SITE DOWN" : "CELLS DOWN",
@@ -881,7 +950,8 @@ function initMap() {
   mapTileLayer = L.tileLayer(tileUrl, {
       attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
       subdomains: 'abcd',
-      maxZoom: 19
+      maxZoom: 19,
+      crossOrigin: true
   }).addTo(siteMap);
 }
 
@@ -1423,7 +1493,7 @@ function formatSingleLine(s, fmtObj, showRemarkOverride) {
     let timeStr = s.start_time;
     if (s.start_timestamp > 0) {
       const d = new Date(s.start_timestamp * 1000);
-      timeStr = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()} | ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+      timeStr = `${String(d.getUTCDate()).padStart(2,'0')}/${String(d.getUTCMonth()+1).padStart(2,'0')}/${d.getUTCFullYear()} | ${String(d.getUTCHours()).padStart(2,'0')}:${String(d.getUTCMinutes()).padStart(2,'0')}`;
     }
 
     const ctx = { icon: iconChar.trim(), type: typeRaw, cluster: s.cluster, sitename: s.site_name, old: s.old_site, new: s.new_site, time: timeStr, remark: s.remark, category: s.category, rts: s.rts, pic: s.pic, te: s.pic };
@@ -2153,6 +2223,145 @@ if (btnMapSearch) {
       alert(`Error: ${e}`);
     }
   });
+
+  const btnMapScreenshot = document.getElementById('btn-map-screenshot');
+  if (btnMapScreenshot) {
+    btnMapScreenshot.addEventListener('click', async () => {
+      const mapElem = document.querySelector('.map-wrap') || document.getElementById('map-container');
+      if (!mapElem) return alert('Elemen peta tidak ditemukan!');
+      
+      const oldText = btnMapScreenshot.innerHTML;
+      btnMapScreenshot.disabled = true;
+      btnMapScreenshot.innerHTML = '⏳ Capturing...';
+      
+      let clone = null;
+      
+      try {
+        // Wait 100ms to settle popup animations
+        await new Promise(r => setTimeout(r, 100));
+        
+        // 1. Create a deep clone of the map element
+        clone = mapElem.cloneNode(true);
+        
+        // 2. Position it off-screen so there is absolutely ZERO visual flicker/blink on the user's screen!
+        clone.style.position = 'absolute';
+        clone.style.left = '-9999px';
+        clone.style.top = '-9999px';
+        clone.style.width = mapElem.offsetWidth + 'px';
+        clone.style.height = mapElem.offsetHeight + 'px';
+        clone.style.zIndex = '-9999';
+        
+        // Append it to body to ensure CSS styles apply perfectly
+        document.body.appendChild(clone);
+        
+        // 3. Temporarily translate ALL elements inside the clone that have CSS transforms (tiles, panes, markers, popups)
+        const allElements = clone.querySelectorAll('*');
+        allElements.forEach((el, index) => {
+          const style = el.style;
+          let transform = style.transform;
+          if (!transform) {
+            // Fallback to live element's computed style if clone's style is initially empty
+            const liveEl = mapElem.querySelectorAll('*')[index];
+            if (liveEl) {
+              transform = window.getComputedStyle(liveEl).transform;
+            }
+          }
+          
+          if (transform && transform !== 'none') {
+            let x = 0, y = 0;
+            // A. Try parsing direct translate3d(x, y, z) or translate(x, y) via regex (most precise for inline styles!)
+            const match = transform.match(/translate(?:3d)?\(([^,]+)px,\s*([^,]+)px/);
+            if (match) {
+              x = parseFloat(match[1]);
+              y = parseFloat(match[2]);
+            } else {
+              // B. Fallback to matrix/matrix3d parsing
+              const matrixValues = transform.split('(')[1]?.split(')')[0]?.split(',');
+              if (matrixValues) {
+                if (matrixValues.length === 6) {
+                  x = parseFloat(matrixValues[4]);
+                  y = parseFloat(matrixValues[5]);
+                } else if (matrixValues.length === 16) {
+                  x = parseFloat(matrixValues[12]);
+                  y = parseFloat(matrixValues[13]);
+                }
+              }
+            }
+            
+            style.transform = 'none';
+            style.left = (parseFloat(style.left || 0) + x) + 'px';
+            style.top = (parseFloat(style.top || 0) + y) + 'px';
+          }
+        });
+        
+        // 4. Temporarily replace glassmorphism and semi-transparent panels inside the clone with solid opaque cards
+        const panels = clone.querySelectorAll('#map-nearest-panel, .map-legend, .leaflet-popup-content-wrapper, .leaflet-popup-tip');
+        const isLight = document.body.classList.contains('light');
+        panels.forEach(p => {
+          p.style.background = isLight ? '#ffffff' : '#1c1c1f';
+          p.style.backdropFilter = 'none';
+          p.style.webkitBackdropFilter = 'none';
+          p.style.boxShadow = 'none';
+        });
+        
+        // 5. Take screenshot of the CLONED element via html2canvas
+        const canvas = await html2canvas(clone, {
+          useCORS: true,
+          allowTaint: true,
+          scale: window.devicePixelRatio || 2, // Retina resolution
+          backgroundColor: isLight ? '#f9f9fb' : '#111113', // Match base theme background exactly
+          logging: false
+        });
+        
+        // Convert to data URL and download
+        const dataUrl = canvas.toDataURL('image/png');
+        const link = document.createElement('a');
+        
+        // Generate filename based on date and searched site/coords
+        const now = new Date();
+        const dateStr = now.getFullYear() +
+          String(now.getMonth() + 1).padStart(2, '0') +
+          String(now.getDate()).padStart(2, '0') + '_' +
+          String(now.getHours()).padStart(2, '0') +
+          String(now.getMinutes()).padStart(2, '0') +
+          String(now.getSeconds()).padStart(2, '0');
+          
+        const searchVal = mapSiteInput.value.trim().replace(/[^a-zA-Z0-9_-]/g, '_');
+        const filename = `Map_Screenshot_${searchVal || 'site'}_${dateStr}.png`;
+        
+        link.download = filename;
+        link.href = dataUrl;
+        link.click();
+        
+        // Superpower feature: Copy image to clipboard for instant pasting (e.g. into WhatsApp)
+        try {
+          canvas.toBlob(async (blob) => {
+            if (blob) {
+              await navigator.clipboard.write([
+                new ClipboardItem({ 'image/png': blob })
+              ]);
+            }
+          }, 'image/png');
+          btnMapScreenshot.innerHTML = '✓ Captured & Copied!';
+        } catch (clipErr) {
+          console.warn('Clipboard write failed, downloaded only:', clipErr);
+          btnMapScreenshot.innerHTML = '✓ Captured!';
+        }
+      } catch (err) {
+        alert('Gagal mengambil screenshot: ' + err);
+      } finally {
+        // ALWAYS clean up the off-screen clone from the DOM tree!
+        if (clone && clone.parentNode) {
+          clone.parentNode.removeChild(clone);
+        }
+        
+        setTimeout(() => {
+          btnMapScreenshot.disabled = false;
+          btnMapScreenshot.innerHTML = oldText;
+        }, 2000);
+      }
+    });
+  }
 }
 
 // ==========================================
