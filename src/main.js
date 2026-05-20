@@ -1,6 +1,7 @@
 const tauriCore = window.__TAURI__ ? window.__TAURI__.core : null;
 const invoke = tauriCore ? tauriCore.invoke : null;
 let checkFn = null;
+let pivotData = [];
 if (window.__TAURI__) {
   if (window.__TAURI__.updater && typeof window.__TAURI__.updater.check === 'function') {
     checkFn = window.__TAURI__.updater.check;
@@ -110,15 +111,18 @@ function renderStatus() {
     tr.dataset.index = index;
     tr.dataset.copyStr = `${s.new_site} - ${s.site_name} - ${s.cluster} ${s.icon}`;
     
+    const impactClass = s.impact && s.impact.toLowerCase().includes('fully') ? 'br' : 'bb';
+    const agingClass = s.agging && (s.agging.includes('d') || s.agging.includes('day')) ? 'br' : (s.agging && (s.agging.includes('24') || s.agging.includes('8-24'))) ? 'ba' : 'bb';
+
     tr.innerHTML = `
       <td>${s.icon}</td>
       <td>${s.new_site}</td>
       <td>${s.site_name}</td>
       <td>${s.cluster}</td>
-      <td>${s.impact}</td>
+      <td><span class="badge ${impactClass}">${s.impact}</span></td>
       <td>${s.rts}</td>
       <td>${s.start_time}</td>
-      <td>${s.agging}</td>
+      <td><span class="badge ${agingClass}">${s.agging}</span></td>
       <td>${s.remark}</td>
     `;
     
@@ -588,6 +592,22 @@ function generateShareWA(statuses) {
   parts.push(hdrText);
   parts.push("");
 
+  // 1. Stollen Alarms (below header, but above the site down list)
+  if (typeof pivotData !== 'undefined' && pivotData.length > 0) {
+    const stollenRows = pivotData.filter(r => r.monitoring === 'STOLLEN');
+    const stollenSystems = [...new Set(stollenRows.map(r => r.system))];
+    stollenSystems.forEach(sys => {
+      const sysRows = stollenRows.filter(r => r.system === sys);
+      if (sysRows.length > 0) {
+        parts.push(`*ALARM STOLLEN BATTERY ${sys} : *`);
+        sysRows.forEach(row => {
+          parts.push(formatStollenLine(row));
+        });
+        parts.push("");
+      }
+    });
+  }
+
   const sec_sd = (fmtBc.lbl_sd || "SITE DOWN :").replace(/:/g, "").trim();
   const sec_cd = (fmtBc.lbl_cd || "CELLS DOWN :").replace(/:/g, "").trim();
   const sec_bcch = (fmtBc.lbl_bcch || "CELL DOWN BCCH Missing NOKIA :").trim();
@@ -637,6 +657,22 @@ function generateShareWA(statuses) {
   if (ful_nok.length > 0) { parts.push(`*${sec_sd} MOCN NOKIA :: ${ful_nok.length}*`); parts.push(toLines(ful_nok)); parts.push(""); }
   if (ful_oth.length > 0) { parts.push(`*${sec_sd}*`); parts.push(toLines(ful_oth)); parts.push(""); }
   if (ful.length === 0) { parts.push(`*${sec_sd}*`); parts.push("- Nihil -"); parts.push(""); }
+
+  // 2. Append Enva Alarms below Site Down
+  if (typeof pivotData !== 'undefined' && pivotData.length > 0) {
+    const envaRows = pivotData.filter(r => r.monitoring === 'POWER NOW' || r.monitoring.includes('POWER') || r.monitoring.includes('ENVA'));
+    const envaSystems = [...new Set(envaRows.map(r => r.system))];
+    envaSystems.forEach(sys => {
+      const sysRows = envaRows.filter(r => r.system === sys);
+      if (sysRows.length > 0) {
+        parts.push(`*ENVA POWER ${sys} : : ${sysRows.length}*`);
+        sysRows.forEach(row => {
+          parts.push(formatEnvaLine(row));
+        });
+        parts.push("");
+      }
+    });
+  }
 
   const cel_hw = cel_normal.filter(e => (e.vendor || "").toUpperCase().includes("HUA"));
   const cel_nok = cel_normal.filter(e => (e.vendor || "").toUpperCase().includes("NOK"));
@@ -1731,9 +1767,9 @@ function renderPM() {
         tr.dataset.waLine = item.waLine;
         tr.dataset.gidx = gIdx;
         tr.style.cursor = 'pointer';
-        const typeClass = item.isFully ? 'type-sitedown' : 'type-celldown';
+        const typeBadgeClass = item.isFully ? 'br' : (item.isBcch ? 'ba' : 'bb');
         tr.innerHTML = `
-          <td class="${typeClass}">${item.typeIcon}</td>
+          <td><span class="badge ${typeBadgeClass}">${item.typeIcon}</span></td>
           <td>${item.cluster}</td>
           <td>${item.pic || ""}</td>
           <td>${item.site_name}</td>
@@ -2481,3 +2517,270 @@ if (btnInstallUpdate) {
         }
     });
 }
+
+// --- DATA PIVOT FEATURE ---
+
+// Load persisted pivot data
+try {
+  const savedPivot = localStorage.getItem('cjhelper_pivot_data');
+  const savedText = localStorage.getItem('cjhelper_pivot_text');
+  if (savedPivot) {
+    pivotData = JSON.parse(savedPivot);
+  }
+  if (savedText && document.getElementById('txt-pivot')) {
+    document.getElementById('txt-pivot').value = savedText;
+  }
+} catch (e) {
+  console.error("Failed to load saved pivot data", e);
+}
+
+// Function to format date from pivot row (e.g., "5/9/2026 0:14" -> "2026-05-09 00:14")
+function formatPivotDate(dateStr) {
+  if (!dateStr) return "";
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(dateStr)) return dateStr;
+  
+  const match = dateStr.match(/(\d+)[\/\-](\d+)[\/\-](\d+)\s+(\d+):(\d+)/);
+  if (match) {
+    const mm = match[1].padStart(2, '0');
+    const dd = match[2].padStart(2, '0');
+    const yyyy = match[3];
+    const hh = match[4].padStart(2, '0');
+    const min = match[5].padStart(2, '0');
+    return `${yyyy}-${mm}-${dd} ${hh}:${min}`;
+  }
+  
+  const d = new Date(dateStr);
+  if (!isNaN(d.getTime())) {
+    const yy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const hh = String(d.getHours()).padStart(2, '0');
+    const min = String(d.getMinutes()).padStart(2, '0');
+    return `${yy}-${mm}-${dd} ${hh}:${min}`;
+  }
+  return dateStr;
+}
+
+// Calculate pivot aging
+function calculatePivotAging(dateStr) {
+  if (!dateStr) return "0 - 2 Hours";
+  
+  let d = new Date(dateStr);
+  const match = dateStr.match(/(\d+)[\/\-](\d+)[\/\-](\d+)\s+(\d+):(\d+)/);
+  if (match) {
+    const mm = parseInt(match[1]);
+    const dd = parseInt(match[2]);
+    const yyyy = parseInt(match[3]);
+    const hh = parseInt(match[4]);
+    const min = parseInt(match[5]);
+    d = new Date(yyyy, mm - 1, dd, hh, min);
+  }
+  
+  if (isNaN(d.getTime())) return "0 - 2 Hours";
+  
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  const diffHours = diffMs / (1000 * 60 * 60);
+  
+  if (diffHours < 0) return "0 - 2 Hours";
+  if (diffHours < 2) return "0 - 2 Hours";
+  if (diffHours < 4) return "2 - 4 Hours";
+  if (diffHours < 8) return "4 - 8 Hours";
+  if (diffHours < 24) return "8 - 24 Hours";
+  return "> 24 Hours";
+}
+
+function formatStollenLine(row) {
+  const formattedDate = formatPivotDate(row.tanggal);
+  return `❗ / ${row.teName || row.newTe || "0"} / ${row.cluster} / ${row.newId} / ${row.siteName} / ${row.category} / ${formattedDate} /`;
+}
+
+function formatEnvaLine(row) {
+  const formattedDate = formatPivotDate(row.tanggal);
+  const agingStr = calculatePivotAging(row.tanggal);
+  return `▶️ / ${row.teName || row.newTe || "0"} / ${row.cluster} / ${row.newId} / ${row.siteName} / ${row.category} / ${formattedDate} / ${agingStr} |`;
+}
+
+function parsePivotData(text) {
+  const lines = text.split('\n');
+  const rows = [];
+  let currentSystem = "";
+  
+  let colIndices = {
+    rowLabels: 0,
+    monitoring: 1,
+    system: 2,
+    cluster: 3,
+    newId: 4,
+    siteName: 5,
+    tanggal: 6,
+    ring: 7,
+    category: 8,
+    newTe: 9
+  };
+  
+  let headerFound = false;
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    const parts = line.split('\t').map(p => p.trim());
+    
+    if (parts[0] === 'Row Labels' || parts.includes('Monitoring')) {
+      parts.forEach((part, idx) => {
+        const p = part.toLowerCase();
+        if (p.includes('label')) colIndices.rowLabels = idx;
+        else if (p.includes('monitoring')) colIndices.monitoring = idx;
+        else if (p.includes('system')) colIndices.system = idx;
+        else if (p.includes('cluster')) colIndices.cluster = idx;
+        else if (p.includes('new id') || p.includes('new site id') || p.includes('id')) colIndices.newId = idx;
+        else if (p.includes('site name') || p.includes('name')) colIndices.siteName = idx;
+        else if (p.includes('tanggal') || p.includes('date') || p.includes('start')) colIndices.tanggal = idx;
+        else if (p.includes('ring')) colIndices.ring = idx;
+        else if (p.includes('category') || p.includes('categ')) colIndices.category = idx;
+        else if (p.includes('new te') || p.includes('te name') || p.includes('te')) colIndices.newTe = idx;
+      });
+      headerFound = true;
+      continue;
+    }
+    
+    if (!headerFound && i === 0) {
+      headerFound = true;
+    }
+    
+    if (parts.length < 2) continue;
+    
+    const label = parts[colIndices.rowLabels] || "";
+    const monitoring = parts[colIndices.monitoring] || "";
+    const systemVal = parts[colIndices.system] || "";
+    
+    if (monitoring.toUpperCase() === 'GRAND TOTAL' || label.toUpperCase() === 'GRAND TOTAL') continue;
+    
+    const newId = parts[colIndices.newId] || "";
+    
+    if (!newId || newId === '0' || newId === '') {
+      if (systemVal && systemVal !== '0') {
+        currentSystem = systemVal.toUpperCase();
+      }
+      continue;
+    }
+    
+    const cluster = parts[colIndices.cluster] || "";
+    const siteName = parts[colIndices.siteName] || "";
+    const tanggal = parts[colIndices.tanggal] || "";
+    const category = parts[colIndices.category] || "";
+    const newTe = parts[colIndices.newTe] || "";
+    
+    rows.push({
+      monitoring: monitoring.toUpperCase(),
+      system: currentSystem || systemVal.toUpperCase() || "HUAWEI",
+      cluster,
+      newId,
+      siteName,
+      tanggal,
+      category,
+      newTe
+    });
+  }
+  
+  return rows;
+}
+
+function renderPivotTable() {
+  const tbody = document.getElementById('pivot-tbody');
+  if (!tbody) return;
+  if (pivotData.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-subtle" style="padding: 20px;">Belum ada data pivot diproses.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = pivotData.map(row => `
+    <tr>
+      <td><span class="badge ${row.monitoring === 'STOLLEN' ? 'br' : 'ba'}">${row.monitoring}</span></td>
+      <td>${row.system}</td>
+      <td>${row.cluster}</td>
+      <td>${row.newId}</td>
+      <td>${row.siteName}</td>
+      <td>${row.tanggal}</td>
+      <td>${row.category}</td>
+      <td>${row.teName || row.newTe}</td>
+    </tr>
+  `).join('');
+}
+
+// Handler for processing pivot data
+async function handleProcessPivot() {
+  const txtPivot = document.getElementById('txt-pivot');
+  if (!txtPivot) return;
+  const text = txtPivot.value.trim();
+  if (!text) {
+    alert("Silakan paste data pivot terlebih dahulu.");
+    return;
+  }
+  
+  const rawRows = parsePivotData(text);
+  
+  const statusBar = document.getElementById('status-bar');
+  if (statusBar) statusBar.textContent = "Sedang memproses & mencocokkan data pivot...";
+  
+  for (let row of rawRows) {
+    if (invoke) {
+      try {
+        const dbInfo = await invoke('lookup_site', { siteId: row.newId });
+        if (dbInfo && dbInfo['TE Name']) {
+          row.teName = dbInfo['TE Name'];
+        } else {
+          row.teName = row.newTe;
+        }
+      } catch (err) {
+        console.error("DB lookup failed for", row.newId, err);
+        row.teName = row.newTe;
+      }
+    } else {
+      row.teName = row.newTe;
+    }
+  }
+  
+  pivotData = rawRows;
+  
+  localStorage.setItem('cjhelper_pivot_data', JSON.stringify(pivotData));
+  localStorage.setItem('cjhelper_pivot_text', text);
+  
+  renderPivotTable();
+  if (statusBar) statusBar.textContent = `Selesai! Memproses ${pivotData.length} baris pivot.`;
+  
+  await checkStatus();
+}
+
+// Bind button actions
+document.addEventListener('DOMContentLoaded', () => {
+  const btnProcessPivot = document.getElementById('btn-process-pivot');
+  const btnClearPivot = document.getElementById('btn-clear-pivot');
+  const btnResetPivot = document.getElementById('btn-reset-pivot');
+  
+  if (btnProcessPivot) {
+    btnProcessPivot.addEventListener('click', handleProcessPivot);
+  }
+  
+  if (btnClearPivot) {
+    btnClearPivot.addEventListener('click', () => {
+      const txtPivot = document.getElementById('txt-pivot');
+      if (txtPivot) txtPivot.value = '';
+    });
+  }
+  
+  if (btnResetPivot) {
+    btnResetPivot.addEventListener('click', () => {
+      const txtPivot = document.getElementById('txt-pivot');
+      if (txtPivot) txtPivot.value = '';
+      pivotData = [];
+      localStorage.removeItem('cjhelper_pivot_data');
+      localStorage.removeItem('cjhelper_pivot_text');
+      renderPivotTable();
+      checkStatus();
+    });
+  }
+  
+  renderPivotTable();
+});
+
+renderPivotTable();

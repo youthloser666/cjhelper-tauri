@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "cjhelper-app",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "identifier": "com.aldo.cjhelper-app",
   "build": {
     "frontendDist": "../src"
@@ -37,6 +37,11 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
+    ],
+    "resources": [
+      "../../wa_server/package.json",
+      "../../wa_server/server.js",
+      "../../wa_server/node_modules/**/*"
     ]
   }
 }

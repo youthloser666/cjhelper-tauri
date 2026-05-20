@@ -475,30 +475,97 @@ pub async fn wa_broadcast(targets: Vec<Value>, delay_ms: Option<u64>) -> Result<
 }
 
 #[tauri::command]
-pub fn wa_start_server() -> Result<(), String> {
+pub fn wa_start_server(app: tauri::AppHandle) -> Result<(), String> {
     use std::process::{Command, Stdio};
-    let wa_dir = std::path::Path::new("d:\\WEB\\PROJECT V2\\wa_server");
-    
+    use tauri::Manager;
+    use tauri::path::BaseDirectory;
+
+    // 1. Coba cari lokasi wa_server secara dinamis
+    let mut wa_dir = std::path::PathBuf::new();
+    let mut found = false;
+
+    // A. Coba cari di folder resource Tauri (jika dibundle)
+    if let Ok(resource_path) = app.path().resolve("wa_server", BaseDirectory::Resource) {
+        if resource_path.exists() && resource_path.is_dir() {
+            wa_dir = resource_path;
+            found = true;
+        }
+    }
+
+    // B. Coba cari sibling dari executable (portable run)
+    if !found {
+        if let Ok(mut exe_path) = std::env::current_exe() {
+            exe_path.pop(); // ke folder exe
+            let sibling_path = exe_path.join("wa_server");
+            if sibling_path.exists() && sibling_path.is_dir() {
+                wa_dir = sibling_path;
+                found = true;
+            } else {
+                // C. Coba cari relative path saat tauri dev (../../../wa_server)
+                let dev_path = exe_path.join("../../..").join("wa_server");
+                if dev_path.exists() && dev_path.is_dir() {
+                    wa_dir = dev_path;
+                    found = true;
+                }
+            }
+        }
+    }
+
+    // D. Fallback ke path default pengembang jika tidak ditemukan
+    if !found {
+        let fallback = std::path::PathBuf::from("d:\\WEB\\PROJECT V2\\wa_server");
+        if fallback.exists() {
+            wa_dir = fallback;
+            found = true;
+        }
+    }
+
+    if !found {
+        return Err("Folder 'wa_server' tidak ditemukan. Harap pastikan folder 'wa_server' berada di direktori aplikasi atau sibling executable.".to_string());
+    }
+
+    // 2. Cek apakah file server.js ada di folder wa_server tersebut
+    if !wa_dir.join("server.js").exists() {
+        return Err(format!(
+            "File 'server.js' tidak ditemukan di folder: {:?}",
+            wa_dir
+        ));
+    }
+
+    // 3. Jalankan server node
     #[cfg(target_os = "windows")]
     {
+        // Jalankan perintah node, tangkap jika gagal karena node tidak terinstal
         Command::new("cmd")
             .args(&["/C", "node server.js"])
-            .current_dir(wa_dir)
+            .current_dir(&wa_dir)
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
-            .map_err(|e| format!("Failed to start WA server on Windows: {}", e))?;
+            .map_err(|e| {
+                if e.kind() == std::io::ErrorKind::NotFound {
+                    "Node.js tidak ditemukan di sistem. Harap instal Node.js terlebih dahulu agar fitur WhatsApp dapat berjalan.".to_string()
+                } else {
+                    format!("Gagal menjalankan WA server: {}", e)
+                }
+            })?;
     }
     
     #[cfg(not(target_os = "windows"))]
     {
         Command::new("node")
             .arg("server.js")
-            .current_dir(wa_dir)
+            .current_dir(&wa_dir)
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
-            .map_err(|e| format!("Failed to start WA server: {}", e))?;
+            .map_err(|e| {
+                if e.kind() == std::io::ErrorKind::NotFound {
+                    "Node.js tidak ditemukan di sistem. Harap instal Node.js terlebih dahulu agar fitur WhatsApp dapat berjalan.".to_string()
+                } else {
+                    format!("Gagal menjalankan WA server: {}", e)
+                }
+            })?;
     }
     
     Ok(())

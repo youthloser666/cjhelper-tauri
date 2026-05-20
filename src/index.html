@@ -24,6 +24,7 @@
       </div>
       <nav class="tnav-wrap" id="nav-menu">
         <button class="tnav nav-btn active" data-target="tab-input">Data Table</button>
+        <button class="tnav nav-btn" data-target="tab-pivot">Data Pivot</button>
         <button class="tnav nav-btn" data-target="tab-status">Status</button>
         <button class="tnav nav-btn" data-target="tab-pm">Messages</button>
         <button class="tnav nav-btn" data-target="tab-wa">Broadcast</button>
@@ -83,6 +84,48 @@
               <button class="tbtn-load" id="btn-load-db">📂 Load DB (.xlsm/.xlsx)</button>
               <button class="tbtn-clr" id="btn-clear">✕ Clear</button>
               <span class="db-info" id="lbl-cek-db">DB belum di-load.</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Pivot Tab -->
+        <div id="tab-pivot" class="tab-pane hidden" style="flex-direction:column;height:100%;display:flex;">
+          <div class="t-card" style="flex:1;margin-top:8px;display:flex;flex-direction:column;">
+            <div class="t-card-head">
+              <span class="t-card-title">⬛ Input Data Pivot</span>
+              <div style="display:flex;gap:5px;">
+                <button class="tbtn-clr" id="btn-reset-pivot">↺ Reset</button>
+              </div>
+            </div>
+            <textarea id="txt-pivot" class="data-ta" placeholder="Paste data Pivot (TSV) di sini..." style="flex:1;"></textarea>
+            <div class="act-bar">
+              <button class="tbtn-p" id="btn-process-pivot">▶ PROSES PIVOT</button>
+              <button class="tbtn-clr" id="btn-clear-pivot">✕ Clear</button>
+            </div>
+          </div>
+          
+          <div class="t-card" style="margin-top:8px;height:300px;display:flex;flex-direction:column;margin-bottom:8px;">
+            <div class="t-card-head">
+              <span class="t-card-title">📋 Data Pivot Terproses</span>
+            </div>
+            <div style="overflow-y:auto;flex:1;">
+              <table class="dt">
+                <thead>
+                  <tr>
+                    <th>Monitoring</th>
+                    <th>System</th>
+                    <th>Cluster</th>
+                    <th>New ID</th>
+                    <th>Site Name</th>
+                    <th>Tanggal</th>
+                    <th>Category</th>
+                    <th>TE Name</th>
+                  </tr>
+                </thead>
+                <tbody id="pivot-tbody">
+                  <tr><td colspan="8" class="text-center text-subtle" style="padding: 20px;">Belum ada data pivot diproses.</td></tr>
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
