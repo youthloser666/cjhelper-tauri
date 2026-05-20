@@ -491,6 +491,14 @@ pub fn wa_start_server(app: tauri::AppHandle) -> Result<(), String> {
             found = true;
         }
     }
+    if !found {
+        if let Ok(resource_path) = app.path().resolve("_up_/_up_/wa_server", BaseDirectory::Resource) {
+            if resource_path.exists() && resource_path.is_dir() {
+                wa_dir = resource_path;
+                found = true;
+            }
+        }
+    }
 
     // B. Coba cari sibling dari executable (portable run)
     if !found {
