@@ -5,7 +5,7 @@
     "platforms": {
         "windows-x86_64": {
             "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTZ1ZLUGtIaWFXLzlqZUNQSUFiRjdOSmRUMW5KNE5JeWpOaEw0ZTRidWh1dk5kTVpjYjJ5ZGdqWkp5SXkwQ2Q0Tzd4K2FnZWp2L1MxL0lrVkJGK0VxMFh1S0swUDZvY0FvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5MjY2MDc1CWZpbGU6Y2poZWxwZXItYXBwXzAuMi4wX3g2NC1zZXR1cC5leGUKamlCNXhJdGxtckRONmJoL2VZR0JKdXNoMWltR0ljT0wrZVdGKzhDeTZHcHU1SlJ4Yy85amxESjBzUndONWQvdnloQnJYZWwwM2ZhRkRQdzRDQi9GREE9PQo=",
-            "url": "https://github.com/youthloser666/cjhelper-tauri/releases/download/v0.2.0/cjhelper-app_0.2.0_x64-setup.nsis.zip"
+            "url": "https://github.com/youthloser666/cjhelper-tauri/releases/download/v0.2.1/cjhelper-app_0.2.1_x64-setup.exe"
         }
     }
 }
