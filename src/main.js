@@ -323,9 +323,12 @@ if (btnLoadDb) {
 document.getElementById('btn-reset-snap').addEventListener('click', async () => {
   try {
     await invoke('reset_snapshot');
+    await invoke('clear_data');
+    txtMaster.value = '';
+    dashMaster.textContent = '0';
     document.getElementById('lbl-snapshot').textContent = `Direset — proses berikutnya akan dipakai sebagai baseline`;
     document.getElementById('lbl-snapshot').className = "text-warning ml-2";
-    statusBar.textContent = `Snapshot direset.`;
+    statusBar.textContent = `Snapshot dan data master direset.`;
     await checkStatus();
   } catch (err) {
     statusBar.textContent = "Error: " + err;
@@ -2885,19 +2888,118 @@ function cleanWaNumber(num) {
   return cleaned + "@c.us";
 }
 
-function generateTeMessage(teName, sites) {
+function shouldSendToTe(remark) {
+  const rem = (remark || "").trim();
+  if (!rem) return true; // kosong → kirim
+  
+  const keywords = ["fu team", "follow up team", "plan ts today"];
+  const remLower = rem.toLowerCase();
+  
+  // Hanya kirim jika remark persis sama dengan salah satu keyword
+  return keywords.some(kw => remLower === kw);
+}
+
+function getTeMessageItemCount(sites, cluster) {
+  const bcchKw = (fmtMsg && fmtMsg.key_bcch || "BCCH").toUpperCase();
+  const sitedownFiltered = [];
+  const celldownFiltered = [];
+  const celldownBcchFiltered = [];
+
+  sites.forEach(s => {
+    const isFully = s.impact && s.impact.toLowerCase().includes('fully');
+    const isBcch = s.remark && s.remark.toUpperCase().includes(bcchKw);
+    if (isFully) {
+      if (shouldSendToTe(s.remark)) sitedownFiltered.push(s);
+    } else if (isBcch) {
+      celldownBcchFiltered.push(s);
+    } else {
+      if (shouldSendToTe(s.remark)) celldownFiltered.push(s);
+    }
+  });
+
+  const clusterUpper = (cluster || "").toUpperCase();
+  const stollenRows = (pivotData || []).filter(r => r.monitoring === 'STOLLEN' && r.cluster && r.cluster.toUpperCase() === clusterUpper);
+  const cableStollenRows = (pivotData || []).filter(r => r.monitoring === 'CABLE STOLLEN' && r.cluster && r.cluster.toUpperCase() === clusterUpper);
+  const envaAlarmRows = (pivotData || []).filter(r => (r.monitoring.includes('POWER') || r.monitoring.includes('ENVA')) && !r.monitoring.includes('NETECO') && r.cluster && r.cluster.toUpperCase() === clusterUpper);
+  const envaNetecoRows = (pivotData || []).filter(r => r.monitoring.includes('NETECO') && r.cluster && r.cluster.toUpperCase() === clusterUpper);
+
+  return {
+    total: sitedownFiltered.length + celldownFiltered.length + celldownBcchFiltered.length + stollenRows.length + cableStollenRows.length + envaAlarmRows.length + envaNetecoRows.length
+  };
+}
+
+function generateTeMessage(teName, sites, cluster) {
+  const bcchKw = (fmtMsg && fmtMsg.key_bcch || "BCCH").toUpperCase();
+  const sitedownFiltered = [];
+  const celldownFiltered = [];
+  const celldownBcchFiltered = [];
+
+  sites.forEach(s => {
+    const isFully = s.impact && s.impact.toLowerCase().includes('fully');
+    const isBcch = s.remark && s.remark.toUpperCase().includes(bcchKw);
+    if (isFully) {
+      if (shouldSendToTe(s.remark)) sitedownFiltered.push(s);
+    } else if (isBcch) {
+      celldownBcchFiltered.push(s);
+    } else {
+      if (shouldSendToTe(s.remark)) celldownFiltered.push(s);
+    }
+  });
+
+  const clusterUpper = (cluster || "").toUpperCase();
+  const stollenRows = (pivotData || []).filter(r => r.monitoring === 'STOLLEN' && r.cluster && r.cluster.toUpperCase() === clusterUpper);
+  const cableStollenRows = (pivotData || []).filter(r => r.monitoring === 'CABLE STOLLEN' && r.cluster && r.cluster.toUpperCase() === clusterUpper);
+  const envaAlarmRows = (pivotData || []).filter(r => (r.monitoring.includes('POWER') || r.monitoring.includes('ENVA')) && !r.monitoring.includes('NETECO') && r.cluster && r.cluster.toUpperCase() === clusterUpper);
+  const envaNetecoRows = (pivotData || []).filter(r => r.monitoring.includes('NETECO') && r.cluster && r.cluster.toUpperCase() === clusterUpper);
+
   const parts = [];
   parts.push(`*INFO SITE DOWN - TE: ${teName.toUpperCase()}*`);
   parts.push("");
   parts.push("Rekan TE yth, mohon bantuannya untuk pengecekan site down berikut:");
   parts.push("");
-  
-  sites.forEach(s => {
-    const remarkStr = s.remark ? ` / ${s.remark}` : "";
-    parts.push(`▶️ ${s.new_site} / ${s.site_name} / ${s.cluster} / ${s.start_time}${remarkStr}`);
-  });
-  
-  parts.push("");
+
+  if (stollenRows.length > 0) {
+    parts.push(`*STOLEN BATTERY :: ${stollenRows.length}*`);
+    stollenRows.forEach(row => parts.push(formatStollenLine(row)));
+    parts.push("");
+  }
+
+  if (cableStollenRows.length > 0) {
+    parts.push(`*STOLEN CABLE :: ${cableStollenRows.length}*`);
+    cableStollenRows.forEach(row => parts.push(formatCableStollenLine(row)));
+    parts.push("");
+  }
+
+  if (sitedownFiltered.length > 0) {
+    parts.push(`*SITEDOWN :: ${sitedownFiltered.length}*`);
+    sitedownFiltered.forEach(s => parts.push(formatSingleLine(s, fmtMsg).waLine));
+    parts.push("");
+  }
+
+  if (celldownFiltered.length > 0) {
+    parts.push(`*CELLDOWN :: ${celldownFiltered.length}*`);
+    celldownFiltered.forEach(s => parts.push(formatSingleLine(s, fmtMsg).waLine));
+    parts.push("");
+  }
+
+  if (celldownBcchFiltered.length > 0) {
+    parts.push(`*CELLDOWN BCCH :: ${celldownBcchFiltered.length}*`);
+    celldownBcchFiltered.forEach(s => parts.push(formatSingleLine(s, fmtMsg).waLine));
+    parts.push("");
+  }
+
+  if (envaAlarmRows.length > 0) {
+    parts.push(`*ENVA ALARM :: ${envaAlarmRows.length}*`);
+    envaAlarmRows.forEach(row => parts.push(formatEnvaLine(row)));
+    parts.push("");
+  }
+
+  if (envaNetecoRows.length > 0) {
+    parts.push(`*ENVA NETECO :: ${envaNetecoRows.length}*`);
+    envaNetecoRows.forEach(row => parts.push(formatEnvaLine(row)));
+    parts.push("");
+  }
+
   parts.push("Terima kasih atas kerjasamanya.");
   return parts.join("\n").trim();
 }
@@ -3128,6 +3230,16 @@ if (btnPmWaBlast) {
       currentTeGroups[key].sites.push(s);
     });
 
+    // Filter out groups that have absolutely NO items to send (sites or pivot alarms)
+    const keys = Object.keys(currentTeGroups);
+    keys.forEach(key => {
+      const g = currentTeGroups[key];
+      const counts = getTeMessageItemCount(g.sites, g.cluster);
+      if (counts.total === 0) {
+        delete currentTeGroups[key];
+      }
+    });
+
     waBlastTeProgressContainer.classList.add('hidden');
     btnCloseWaBlastTe.textContent = "Batal";
     btnExecuteWaBlastTe.disabled = false;
@@ -3156,6 +3268,7 @@ function renderWaBlastTeTable(teGroups) {
     const g = teGroups[key];
     const cleanJid = cleanWaNumber(g.phone);
     const isPhoneValid = !!cleanJid;
+    const totalCount = getTeMessageItemCount(g.sites, g.cluster).total;
     
     const tr = document.createElement('tr');
     tr.innerHTML = `
@@ -3166,7 +3279,7 @@ function renderWaBlastTeTable(teGroups) {
       <td>
         <input type="text" class="fi wa-blast-te-phone-input" data-key="${key}" value="${g.phone}" placeholder="No WA (628...)" style="width:160px; font-size:13.5px; height:24px; padding:2px 6px;">
       </td>
-      <td class="text-center"><span class="badge ${g.sites.length > 1 ? 'br' : 'bb'}">${g.sites.length}</span></td>
+      <td class="text-center"><span class="badge ${totalCount > 1 ? 'br' : 'bb'}">${totalCount}</span></td>
       <td class="wa-blast-te-status-cell text-subtle" data-key="${key}" style="font-size:14px; font-weight:600;">Ready</td>
     `;
     
@@ -3223,7 +3336,7 @@ if (btnExecuteWaBlastTe) {
       const key = chk.dataset.key;
       const g = currentTeGroups[key];
       const jid = cleanWaNumber(g.phone);
-      const message = generateTeMessage(g.name, g.sites);
+      const message = generateTeMessage(g.name, g.sites, g.cluster);
       
       blastTargets.push({ key, name: g.name, jid, message });
 
