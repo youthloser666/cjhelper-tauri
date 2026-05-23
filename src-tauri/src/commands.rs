@@ -237,6 +237,7 @@ pub struct SiteStatus {
     pub site_class: String,
     pub pic: String,
     pub vendor: String,
+    pub te_phone: String,
 }
 
 fn fc(row: &HashMap<String, String>, kws: &[&str]) -> Option<String> {
@@ -824,6 +825,7 @@ pub fn check_site_status(state: State<'_, AppState>) -> Result<Vec<SiteStatus>, 
     
     let vendor_idx = idx_cache.get("VENDOR").cloned();
     let old_site_idx = idx_cache.get("OLD_SITE").cloned();
+    let te_phone_idx = idx_cache.get("TE_PHONE").cloned();
     
     let mut results = Vec::new();
     let mut last_fmt_idx: Option<usize> = None;
@@ -866,6 +868,14 @@ pub fn check_site_status(state: State<'_, AppState>) -> Result<Vec<SiteStatus>, 
                         .and_then(|r| r.get(idx))
                         .cloned()
                         .unwrap_or_default() 
+                } else { String::new() };
+
+                let te_phone = if let Some(idx) = te_phone_idx {
+                    db_lookup.get(&ns_upper)
+                        .and_then(|&row_idx| db_df.get(row_idx))
+                        .and_then(|r| r.get(idx))
+                        .cloned()
+                        .unwrap_or_default()
                 } else { String::new() };
 
                 let st = get_val(row, &["START"]);
@@ -913,7 +923,8 @@ pub fn check_site_status(state: State<'_, AppState>) -> Result<Vec<SiteStatus>, 
                     category: if cat.is_empty() { get_val(row, &["CATEG"]) } else { cat },
                     site_class: s_cls,
                     pic,
-                    vendor
+                    vendor,
+                    te_phone
                 });
             }
         }
@@ -956,6 +967,14 @@ pub fn check_site_status(state: State<'_, AppState>) -> Result<Vec<SiteStatus>, 
                             .and_then(|r| r.get(idx))
                             .cloned()
                             .unwrap_or_default() 
+                    } else { String::new() };
+
+                    let te_phone = if let Some(idx) = te_phone_idx {
+                        db_lookup.get(&ns_upper)
+                            .and_then(|&row_idx| db_df.get(row_idx))
+                            .and_then(|r| r.get(idx))
+                            .cloned()
+                            .unwrap_or_default()
                     } else { String::new() };
 
                     let st = get_val(row, &["START"]);
@@ -1003,7 +1022,8 @@ pub fn check_site_status(state: State<'_, AppState>) -> Result<Vec<SiteStatus>, 
                         category: if cat.is_empty() { get_val(row, &["CATEG"]) } else { cat },
                         site_class: s_cls,
                         pic,
-                        vendor
+                        vendor,
+                        te_phone
                     });
                 }
             }
@@ -1011,6 +1031,152 @@ pub fn check_site_status(state: State<'_, AppState>) -> Result<Vec<SiteStatus>, 
     }
 
     Ok(results)
+}
+
+// -----------------------------------------
+// TE Contacts Management
+// -----------------------------------------
+#[tauri::command]
+pub fn get_wa_te_contacts(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    use tauri::Manager;
+    if let Ok(path) = app.path().app_config_dir() {
+        let file_path = path.join("wa_te_contacts.json");
+        if file_path.exists() {
+            if let Ok(content) = std::fs::read_to_string(&file_path) {
+                if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
+                    return Ok(val);
+                }
+            }
+        }
+    }
+    Ok(serde_json::json!({ "contacts": [] }))
+}
+
+#[tauri::command]
+pub fn save_wa_te_contacts(app: tauri::AppHandle, contacts: Vec<serde_json::Value>) -> Result<(), String> {
+    use tauri::Manager;
+    let config_val = serde_json::json!({ "contacts": contacts });
+    if let Ok(path) = app.path().app_config_dir() {
+        let _ = std::fs::create_dir_all(&path);
+        let file_path = path.join("wa_te_contacts.json");
+        if let Ok(json_str) = serde_json::to_string_pretty(&config_val) {
+            let _ = std::fs::write(file_path, json_str);
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn load_te_contacts_excel(app: tauri::AppHandle, path: String) -> Result<usize, String> {
+    use calamine::{open_workbook_auto, Reader, Data};
+    use std::fs;
+    use serde_json::json;
+    use tauri::Manager;
+    
+    if path.is_empty() { return Ok(0); }
+    let mut workbook = open_workbook_auto(&path).map_err(|e| format!("Gagal membuka file Excel: {}", e))?;
+    let sheet_names = workbook.sheet_names().to_vec();
+    let first_sheet = sheet_names.first().ok_or("Sheet tidak ditemukan")?.clone();
+    let range = workbook.worksheet_range(&first_sheet).map_err(|e| e.to_string())?;
+    let (rows_count, _) = range.get_size();
+    if rows_count == 0 { return Ok(0); }
+
+    let mut te_name_idx = None;
+    let mut te_phone_idx = None;
+    let mut cluster_idx = None;
+
+    // Read headers
+    for (i, row) in range.rows().enumerate() {
+        if i == 0 {
+            for (j, cell) in row.iter().enumerate() {
+                let h = cell.to_string().trim().to_uppercase();
+                if h == "TE NAME" || h == "TE_NAME" || h == "PIC" { te_name_idx = Some(j); }
+                if h == "TE PHONE" || h == "TE_PHONE" || h == "TE PHONE NUMBER" { te_phone_idx = Some(j); }
+                if h == "FM OFFICE" || h == "CLUSTER" || h == "MC" { cluster_idx = Some(j); }
+            }
+            break;
+        }
+    }
+
+    let te_name_idx = te_name_idx.ok_or("Kolom TE Name tidak ditemukan")?;
+    let te_phone_idx = te_phone_idx.ok_or("Kolom TE Phone Number tidak ditemukan")?;
+    let cluster_idx = cluster_idx.ok_or("Kolom FM Office atau Cluster tidak ditemukan")?;
+
+    // Load existing JSON contacts
+    let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    let file_path = config_dir.join("wa_te_contacts.json");
+    let mut contacts_list = if file_path.exists() {
+        let content = fs::read_to_string(&file_path).map_err(|e| e.to_string())?;
+        serde_json::from_str::<serde_json::Value>(&content)
+            .unwrap_or_else(|_| json!({ "contacts": [] }))
+    } else {
+        json!({ "contacts": [] })
+    };
+
+    let mut contacts_arr = contacts_list["contacts"].as_array_mut()
+        .ok_or("Format wa_te_contacts.json tidak valid")?;
+
+    let mut import_count = 0;
+
+    for (i, row) in range.rows().enumerate() {
+        if i == 0 { continue; } // skip header
+        
+        let name = match row.get(te_name_idx) {
+            Some(Data::String(s)) => s.trim().to_string(),
+            _ => String::new()
+        };
+        
+        let phone = match row.get(te_phone_idx) {
+            Some(Data::String(s)) => s.trim().to_string(),
+            Some(Data::Float(f)) => if f.fract() == 0.0 { (*f as i64).to_string() } else { f.to_string() },
+            Some(Data::Int(i)) => i.to_string(),
+            _ => String::new()
+        };
+        
+        let cluster = match row.get(cluster_idx) {
+            Some(Data::String(s)) => s.trim().to_string(),
+            _ => String::new()
+        };
+
+        if name.is_empty() || phone.is_empty() || phone == "nan" || phone == "0" {
+            continue;
+        }
+
+        // Clean names
+        let name_clean = name.trim().to_string();
+        let cluster_clean = cluster.trim().to_string();
+        let phone_clean = phone.trim().to_string();
+
+        // Check if already exists in JSON to overwrite
+        let mut found = false;
+        for c in contacts_arr.iter_mut() {
+            let c_name = c["name"].as_str().unwrap_or_default().to_uppercase();
+            let c_cluster = c["cluster"].as_str().unwrap_or_default().to_uppercase();
+            
+            if c_name == name_clean.to_uppercase() && c_cluster == cluster_clean.to_uppercase() {
+                c["phone"] = json!(phone_clean.clone());
+                found = true;
+                import_count += 1;
+                break;
+            }
+        }
+
+        if !found {
+            contacts_arr.push(json!({
+                "name": name_clean,
+                "cluster": cluster_clean,
+                "phone": phone_clean
+            }));
+            import_count += 1;
+        }
+    }
+
+    // Save to file
+    let _ = fs::create_dir_all(&config_dir);
+    let json_str = serde_json::to_string_pretty(&contacts_list).map_err(|e| e.to_string())?;
+    fs::write(file_path, json_str).map_err(|e| e.to_string())?;
+
+    Ok(import_count)
 }
 
 // -----------------------------------------

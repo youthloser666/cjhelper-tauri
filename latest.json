@@ -1,11 +1,11 @@
 {
-    "version": "v0.2.1",
+    "version": "v0.2.2",
     "notes": "Menambahkan perbaikan TLP database dan perbesaran UI scale.",
     "pub_date": "2026-05-21T00:28:00Z",
     "platforms": {
         "windows-x86_64": {
-            "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTZ1ZLUGtIaWFXLzlqZUNQSUFiRjdOSmRUMW5KNE5JeWpOaEw0ZTRidWh1dk5kTVpjYjJ5ZGdqWkp5SXkwQ2Q0Tzd4K2FnZWp2L1MxL0lrVkJGK0VxMFh1S0swUDZvY0FvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5MjY2MDc1CWZpbGU6Y2poZWxwZXItYXBwXzAuMi4wX3g2NC1zZXR1cC5leGUKamlCNXhJdGxtckRONmJoL2VZR0JKdXNoMWltR0ljT0wrZVdGKzhDeTZHcHU1SlJ4Yy85amxESjBzUndONWQvdnloQnJYZWwwM2ZhRkRQdzRDQi9GREE9PQo=",
-            "url": "https://github.com/youthloser666/cjhelper-tauri/releases/download/CJH/cjhelper-app_0.2.1_x64-setup.exe"
+            "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTZ1ZLUGtIaWFXLzZPdGQ4T1NLMzdxbjF3TGhsc3o1UWREMTlhNldrS2FjY0RmZzFLVUxvVmpERlNLYWRaRHFSSlhxVEwrbHJWaG0raFRpTWFWeFB4dHUvWkY1UkRFN0E4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5MjkzMjA1CWZpbGU6Y2poZWxwZXItYXBwXzAuMi4yX3g2NC1zZXR1cC5leGUKcHNxdUEvTVVMS2ZrQmxSZTdHVy9IWEQxaVIzM0dvMmVpbFRiclBCUFRGdFNWbW9KdGhQYVlMbmVoZHQrWkVBVVU4VlNZbDNWUGE3Z0tCVVRXYkYrQ3c9PQo=",
+            "url": "https://github.com/youthloser666/cjhelper-tauri/releases/download/CJH/cjhelper-app_0.2.2_x64-setup.exe"
         }
     }
 }

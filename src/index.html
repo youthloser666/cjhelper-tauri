@@ -206,6 +206,7 @@
                 style="margin-left:auto;font-weight:bold;color:var(--accent-lit);">Remark: ON</button>
               <button class="cbtn ca" id="btn-pm-copy-sel">📋 Copy Terpilih</button>
               <button class="cbtn ca" id="btn-pm-copy-all">📄 Copy Semua</button>
+              <button class="tbtn-p" id="btn-pm-wa-blast" style="margin-left:5px; background:var(--accent); color:#000; font-weight:800;">⚡ WA Blast TE</button>
             </div>
             <div class="ff">
               <div class="fl">Filter Data:</div>
@@ -466,6 +467,7 @@
           <div class="tab-row" style="margin-bottom:8px;border-radius:var(--r);overflow:hidden;">
             <button class="tb active" id="subbtn-fmt">🎨 Formatting</button>
             <button class="tb" id="subbtn-wa-mgmt">📢 Broadcast Utils</button>
+            <button class="tb" id="subbtn-wa-te">👷 TE Contacts</button>
             <button class="tb" id="subbtn-db-edit">📝 Edit Database</button>
             <button class="tb" id="subbtn-system">⚙️ System</button>
           </div>
@@ -589,6 +591,57 @@
               </div>
               <textarea id="wa-bc-log-box" class="data-ta" style="flex:1;border:none;border-radius:0;margin:0;"
                 readonly>Belum ada broadcast hari ini.</textarea>
+            </div>
+          </div>
+
+          <!-- 5. TE Contacts Sub-tab -->
+          <div id="subtab-wa-te" class="subtab-pane hidden"
+            style="flex-direction:column;flex:1;display:flex;overflow:hidden;">
+            <div class="msg-head" style="margin-bottom:7px;border-radius:var(--r);">
+              <span style="color:var(--accent-lit);font-weight:700;font-size:12.5px;">👷 TE Contacts Database</span>
+              <span style="color:var(--txt-3);font-size:10.5px;margin-left:8px;">Kelola daftar nomor WhatsApp TE di sini. Data tersimpan di wa_te_contacts.json.</span>
+            </div>
+
+            <!-- Form tambah & filter -->
+            <div style="background:var(--bg-card); border:1px solid var(--bdr); border-radius:var(--r); padding:10px; margin-bottom:7px; display:flex; flex-direction:column; gap:8px;">
+              <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                <span style="font-size:11px; font-weight:bold; color:var(--txt-2); white-space:nowrap;">Tambah Kontak:</span>
+                <input type="text" id="wa-te-input-name" class="fi" style="width:130px;" placeholder="Nama TE...">
+                <input type="text" id="wa-te-input-cluster" class="fi" style="width:130px;" placeholder="Cluster/Wilayah...">
+                <input type="text" id="wa-te-input-phone" class="fi" style="width:130px;" placeholder="No. WA (628...)...">
+                <button id="btn-wa-te-add" class="tbtn-p" style="font-size:11px; padding:3px 12px; height:24px; display:flex; align-items:center;">➕ Tambah</button>
+              </div>
+              <div style="width:100%; height:1px; background:var(--bdr);"></div>
+              <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                <span style="font-size:11px; font-weight:bold; color:var(--txt-2); white-space:nowrap;">Cari Kontak:</span>
+                <input type="text" id="wa-te-search" class="fi" style="flex:1;" placeholder="Ketik nama atau cluster untuk memfilter...">
+                <button id="btn-wa-te-clear-search" class="tbtn-clr" style="font-size:11px; padding:2px 8px;">✕ Clear</button>
+                <button id="btn-wa-te-import" class="tbtn-load" style="font-size:11px; padding:2px 10px;">📂 Import Excel (.xlsx)</button>
+              </div>
+            </div>
+
+            <!-- Tabel Kontak -->
+            <div class="ib" style="flex:1; overflow-y:auto; margin-bottom:7px; border-radius:var(--r);">
+              <table class="dt" style="width: 100%;">
+                <thead>
+                  <tr>
+                    <th>Nama TE</th>
+                    <th>Cluster/Wilayah</th>
+                    <th>No. WhatsApp</th>
+                    <th style="width: 80px; text-align:center;">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody id="wa-te-tbody">
+                  <!-- Populated by JS -->
+                </tbody>
+              </table>
+            </div>
+
+            <div class="msg-head" style="margin-bottom:7px; border-radius:var(--r); justify-content:space-between;">
+              <span id="wa-te-status-lbl" style="color:var(--grn); font-weight:700; font-size:11px;"></span>
+              <div style="display:flex; gap:5px;">
+                <button id="btn-wa-te-save" class="tbtn-p">💾 Simpan Perubahan</button>
+              </div>
             </div>
           </div>
 
@@ -794,6 +847,59 @@
       </div>
       <div style="display:flex;gap:10px;width:100%;">
         <button class="tbtn-clr" id="btn-close-wa-qr" style="flex:1;padding:8px;">Tutup</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- WA Blast TE Modal -->
+  <div id="wa-blast-te-modal" class="modal hidden"
+    style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:9999;align-items:center;justify-content:center;backdrop-filter:blur(5px);display:none;">
+    <div
+      style="background:var(--bg-card);border:1px solid var(--bdr);border-radius:var(--r);width:600px;max-height:85%;padding:20px;display:flex;flex-direction:column;box-shadow:0 15px 50px rgba(0,0,0,0.5);">
+      <h3 style="margin:0 0 10px 0;color:var(--accent);font-size:16px;display:flex;align-items:center;gap:6px;">⚡ WA Blast Japri TE</h3>
+      <p style="font-size:12px;color:var(--txt-2);line-height:1.5;margin-bottom:15px;">
+        Sistem mendeteksi daftar TE yang memiliki site down. Centang TE yang ingin dikirimi pesan WhatsApp secara pribadi (Japri).
+      </p>
+      
+      <!-- Progress Bar -->
+      <div id="wa-blast-te-progress-container" class="hidden" style="margin-bottom:15px; background: rgba(255,255,255,0.05); padding: 10px; border-radius: var(--r); border: 1px solid var(--bdr);">
+        <div style="display:flex; justify-content:space-between; font-size:11px; margin-bottom:5px; color:var(--txt-2);">
+          <span id="wa-blast-te-progress-status">Mengirim pesan...</span>
+          <span id="wa-blast-te-progress-percent">0%</span>
+        </div>
+        <div style="width:100%; height:8px; background:rgba(255,255,255,0.1); border-radius:4px; overflow:hidden;">
+          <div id="wa-blast-te-progress-fill" style="width:0%; height:100%; background:var(--accent); transition:width 0.2s ease;"></div>
+        </div>
+      </div>
+
+      <!-- TE Table Scroll Area -->
+      <div style="flex:1; overflow-y:auto; border:1px solid var(--bdr); border-radius:var(--r); margin-bottom:15px; background:var(--bg-input);">
+        <table class="dt" style="width:100%;">
+          <thead>
+            <tr>
+              <th style="width:30px; text-align:center;"><input type="checkbox" id="chk-wa-blast-te-select-all" checked></th>
+              <th>Nama TE</th>
+              <th>No. WhatsApp</th>
+              <th style="width:70px; text-align:center;">Site Down</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="wa-blast-te-tbody">
+            <!-- Populated dynamically by JS -->
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Delay and Buttons -->
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+        <div style="display:flex; align-items:center; gap:6px; font-size:12px; color:var(--txt-2);">
+          <span>Jeda (ms):</span>
+          <input type="number" id="num-wa-blast-te-delay" class="sinput" value="2000" style="width:70px; text-align:center;">
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button class="tbtn-clr" id="btn-close-wa-blast-te" style="padding:6px 15px;">Batal</button>
+          <button class="tbtn-p" id="btn-execute-wa-blast-te" style="padding:6px 20px;">Kirim Blast</button>
+        </div>
       </div>
     </div>
   </div>
