@@ -23,8 +23,8 @@
         <div class="logo-sq">✦</div>CJ Helper Tools
       </div>
       <nav class="tnav-wrap" id="nav-menu">
-        <button class="tnav nav-btn active" data-target="tab-input">Data Table</button>
-        <button class="tnav nav-btn" data-target="tab-pivot">Data Pivot</button>
+        <button class="tnav nav-btn active" data-target="tab-dashboard">Dashboard</button>
+        <button class="tnav nav-btn" data-target="tab-input">Data Table</button>
         <button class="tnav nav-btn" data-target="tab-status">Status</button>
         <button class="tnav nav-btn" data-target="tab-pm">Messages</button>
         <button class="tnav nav-btn" data-target="tab-wa">Broadcast</button>
@@ -34,7 +34,7 @@
       </nav>
       <div class="datetime" id="clock">—</div>
       <div class="topbar-right">
-        <span class="status-ok" id="status-bar">Belum ada data.</span>
+        <span class="status-ok" id="status-bar">No data.</span>
         <button class="tbtn" id="btn-theme">🌙 Dark</button>
         <button class="tbtn-a" id="btn-refresh">⟳ Refresh</button>
       </div>
@@ -43,91 +43,217 @@
     <div class="main-body">
       <!-- Content Area -->
       <main class="content">
-        <!-- Input Tab -->
-        <div id="tab-input" class="tab-pane active" style="flex-direction:column;height:100%;display:flex;">
-          <div class="stat-row">
-            <div class="sc r">
-              <div class="sc-num" id="dash-down">0</div>
-              <div class="sc-label">Site Down</div>
-              <div class="sc-sub">Vs snapshot aktif</div>
+
+        <!-- Dashboard Tab -->
+        <div id="tab-dashboard" class="tab-pane active"
+          style="flex-direction:column;height:100%;display:flex;overflow-y:auto;gap:15px;padding-right:4px;">
+          
+          <!-- Region Switch Card (CJN / CJS Filter) -->
+          <div style="background:var(--bg-card);border:1px solid var(--bdr);border-radius:12px;padding:10px 15px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+            <div style="display:flex;align-items:center;gap:10px;">
+              <span style="font-size:12.5px;font-weight:700;color:var(--accent-lit);display:flex;align-items:center;gap:6px;">
+                <span>📍 Regional Area Filter:</span>
+              </span>
+              <span style="font-size:11px;color:var(--txt-3);">Filter Master & Status data by CJN / CJS regions</span>
             </div>
-            <div class="sc g">
-              <div class="sc-num" id="dash-up">0</div>
-              <div class="sc-label">Site Up</div>
-              <div class="sc-sub">Recovery terdeteksi</div>
-            </div>
-            <div class="sc b">
-              <div class="sc-num" id="dash-master">0</div>
-              <div class="sc-label">Master Rows</div>
-              <div class="sc-sub">Data terakhir diproses</div>
-            </div>
-            <div class="sc a">
-              <div class="sc-num" id="dash-db">0</div>
-              <div class="sc-label">DB Rows</div>
-              <div class="sc-sub">Database aktif</div>
+            <div class="segmented-control" id="dash-region-filter" style="display:flex;gap:4px;background:var(--bg-surface);padding:3px;border-radius:8px;border:1px solid var(--bdr);">
+              <button class="pill active seg-btn" data-region="ALL" style="font-size:11px;padding:4px 14px;font-weight:bold;">🌐 ALL</button>
+              <button class="pill seg-btn" data-region="CJN" style="font-size:11px;padding:4px 14px;font-weight:bold;color:#38bdf8;">🟢 CJN (North)</button>
+              <button class="pill seg-btn" data-region="CJS" style="font-size:11px;padding:4px 14px;font-weight:bold;color:#f43f5e;">🔴 CJS (South)</button>
             </div>
           </div>
-          <div class="t-card" style="flex:1;margin-top:8px;">
-            <div class="t-card-head">
-              <span class="t-card-title">⬛ Input Data Table</span>
-              <div style="display:flex;gap:5px;">
-                <button class="tbtn-clr" id="btn-reset-snap">↺ Reset</button>
-                <button class="tbtn-a" id="btn-manual-snap">📸 Manual Snapshot</button>
+
+          <!-- Section 1: DATA MASTER Cards -->
+          <div>
+            <div
+              style="font-size:11px;font-weight:700;color:var(--accent-lit);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+              <span>📊 MASTER DATA SUMMARY</span>
+            </div>
+            <div class="stat-row" style="margin-bottom:0;">
+              <div class="sc r">
+                <div class="sc-num" id="dash-down">0</div>
+                <div class="sc-label">Site Down</div>
+                <div class="sc-sub">Vs active snapshot</div>
+              </div>
+              <div class="sc g">
+                <div class="sc-num" id="dash-up">0</div>
+                <div class="sc-label">Site Up</div>
+                <div class="sc-sub">Recovery detected</div>
+              </div>
+              <div class="sc b">
+                <div class="sc-num" id="dash-master">0</div>
+                <div class="sc-label">Master Rows</div>
+                <div class="sc-sub">Last processed data</div>
+              </div>
+              <div class="sc a" style="display:flex;flex-direction:column;justify-content:space-between;">
+                <div>
+                  <div class="sc-num" id="dash-db">0</div>
+                  <div class="sc-label">DB Rows</div>
+                  <div class="sc-sub" id="lbl-dash-db-filename" style="margin-top:2px;font-weight:600;color:var(--accent-lit);font-size:10px;word-break:break-all;">Not loaded</div>
+                </div>
+                <button class="tbtn-load" id="btn-load-db" style="margin-top:6px;font-size:10.5px;padding:4px 8px;width:100%;">📂 Load Excel DB</button>
               </div>
             </div>
-            <div class="snap-bar">📌 Snapshot: <span class="snap-tag" id="lbl-snapshot">Belum ada — otomatis backup tiap
-                jam</span></div>
-            <textarea id="txt-master" class="data-ta" placeholder="Paste data TSV di sini..."
-              style="flex:1;"></textarea>
-            <div class="act-bar">
-              <button class="tbtn-p" id="btn-process">▶ PROSES</button>
-              <button class="tbtn-load" id="btn-load-db">📂 Load DB (.xlsm/.xlsx)</button>
-              <button class="tbtn-clr" id="btn-clear">✕ Clear</button>
-              <span class="db-info" id="lbl-cek-db">DB belum di-load.</span>
+          </div>
+
+          <!-- Section 2: DATA CONTACT TE Cards -->
+          <div>
+            <div
+              style="font-size:11px;font-weight:700;color:var(--grn);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+              <span>👥 TE & WA CONTACT DATA SUMMARY</span>
+            </div>
+            <div class="stat-row" style="margin-bottom:0;">
+              <div class="sc g" style="display:flex;flex-direction:column;justify-content:space-between;">
+                <div>
+                  <div class="sc-num" id="dash-contact-total">0</div>
+                  <div class="sc-label">Total TE Contacts</div>
+                  <div class="sc-sub" id="lbl-dash-contact-status" style="margin-top:2px;font-weight:600;color:var(--grn);font-size:10px;word-break:break-all;">Active Contact DB</div>
+                </div>
+                <button class="tbtn-load" id="btn-dash-import-contact" style="margin-top:6px;font-size:10.5px;padding:4px 8px;width:100%;background:rgba(46,204,113,0.15);color:var(--grn);border-color:rgba(46,204,113,0.3);">📂 Import TE Contacts</button>
+              </div>
+              <div class="sc b">
+                <div class="sc-num" id="dash-contact-valid">0</div>
+                <div class="sc-label">WA Phone Set</div>
+                <div class="sc-sub">Ready for Direct TE Messages</div>
+              </div>
+              <div class="sc a">
+                <div class="sc-num" id="dash-contact-unset">0</div>
+                <div class="sc-label">WA Phone Unset</div>
+                <div class="sc-sub">Needs info</div>
+              </div>
+              <div class="sc r">
+                <div class="sc-num" id="dash-contact-clusters">0</div>
+                <div class="sc-label">Total TE Clusters</div>
+                <div class="sc-sub">TE coverage area</div>
+              </div>
             </div>
           </div>
+
         </div>
 
-        <!-- Pivot Tab -->
-        <div id="tab-pivot" class="tab-pane hidden" style="flex-direction:column;height:100%;display:flex;">
-          <div class="t-card" style="flex:1;margin-top:8px;display:flex;flex-direction:column;">
-            <div class="t-card-head">
-              <span class="t-card-title">⬛ Input Data Pivot</span>
-              <div style="display:flex;gap:5px;">
-                <button class="tbtn-clr" id="btn-reset-pivot">↺ Reset</button>
+        <!-- Data Table Tab -->
+        <div id="tab-input" class="tab-pane hidden" style="flex-direction:column;height:100%;display:flex;">
+          <div class="msg-head"
+            style="margin-bottom:8px;border-radius:var(--r);background:var(--bg-card);padding:6px 12px;display:flex;align-items:center;justify-content:space-between;">
+            <div class="segmented-control" id="datatable-subtab-seg"
+              style="display:flex;gap:4px;background:transparent;padding:0;">
+              <button class="mode-btn seg-btn active" data-subtarget="subtab-dt-master">📋 Master Table</button>
+              <button class="mode-btn seg-btn" data-subtarget="subtab-dt-pivot">📊 Pivot Data</button>
+              <button class="mode-btn seg-btn" data-subtarget="subtab-dt-netdrone">🛸 Netdrone Data</button>
+            </div>
+          </div>
+
+          <!-- Subtab 1: Master Table -->
+          <div id="subtab-dt-master" class="dt-subtab-pane" style="flex:1;display:flex;flex-direction:column;">
+            <div class="t-card" style="flex:1;margin-top:0;">
+              <div class="t-card-head">
+                <span class="t-card-title">⬛ Input Master Data Table</span>
+                <div style="display:flex;gap:5px;">
+                  <button class="tbtn-clr" id="btn-reset-snap">↺ Reset</button>
+                  <button class="tbtn-a" id="btn-manual-snap">📸 Manual Snapshot</button>
+                </div>
+              </div>
+              <div class="snap-bar">📌 Snapshot: <span class="snap-tag" id="lbl-snapshot">None — hourly auto backup</span></div>
+              <textarea id="txt-master" class="data-ta" placeholder="Paste TSV data here..."
+                style="flex:1;"></textarea>
+              <div class="act-bar">
+                <button class="tbtn-p" id="btn-process">▶ PROCESS</button>
+                <button class="tbtn-clr" id="btn-clear">✕ Clear</button>
               </div>
             </div>
-            <textarea id="txt-pivot" class="data-ta" placeholder="Paste data Pivot (TSV) di sini..." style="flex:1;"></textarea>
-            <div class="act-bar">
-              <button class="tbtn-p" id="btn-process-pivot">▶ PROSES PIVOT</button>
-              <button class="tbtn-clr" id="btn-clear-pivot">✕ Clear</button>
+          </div>
+
+          <!-- Subtab 2: Data Pivot -->
+          <div id="subtab-dt-pivot" class="dt-subtab-pane hidden" style="flex:1;display:flex;flex-direction:column;">
+            <div class="t-card" style="flex:1;margin-top:0;display:flex;flex-direction:column;">
+              <div class="t-card-head">
+                <span class="t-card-title">⬛ Input Pivot Data</span>
+                <div style="display:flex;gap:5px;">
+                  <button class="tbtn-clr" id="btn-reset-pivot">↺ Reset</button>
+                </div>
+              </div>
+              <textarea id="txt-pivot" class="data-ta" placeholder="Paste Pivot data (TSV) here..."
+                style="flex:1;"></textarea>
+              <div class="act-bar">
+                <button class="tbtn-p" id="btn-process-pivot">▶ PROCESS PIVOT</button>
+                <button class="tbtn-clr" id="btn-clear-pivot">✕ Clear</button>
+              </div>
+            </div>
+
+            <div class="t-card" style="margin-top:8px;height:260px;display:flex;flex-direction:column;">
+              <div class="t-card-head">
+                <span class="t-card-title">📋 Processed Pivot Data</span>
+              </div>
+              <div style="overflow-y:auto;flex:1;">
+                <table class="dt">
+                  <thead>
+                    <tr>
+                      <th>Monitoring</th>
+                      <th>System</th>
+                      <th>Cluster</th>
+                      <th>New ID</th>
+                      <th>Site Name</th>
+                      <th>Date</th>
+                      <th>Category</th>
+                      <th>TE Name</th>
+                    </tr>
+                  </thead>
+                  <tbody id="pivot-tbody">
+                    <tr>
+                      <td colspan="8" class="text-center text-subtle" style="padding: 20px;">No processed pivot data.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
-          
-          <div class="t-card" style="margin-top:8px;height:300px;display:flex;flex-direction:column;margin-bottom:8px;">
-            <div class="t-card-head">
-              <span class="t-card-title">📋 Data Pivot Terproses</span>
+
+          <!-- Subtab 3: Data Netdrone -->
+          <div id="subtab-dt-netdrone" class="dt-subtab-pane hidden" style="flex:1;display:flex;flex-direction:column;gap:8px;">
+            <div class="t-card" style="min-height:230px;flex-shrink:0;margin-top:0;display:flex;flex-direction:column;">
+              <div class="t-card-head">
+                <span class="t-card-title">🛸 Input Netdrone Data</span>
+                <div style="display:flex;gap:8px;align-items:center;">
+                  <button class="tbtn-p" id="btn-process-netdrone" disabled style="padding:4px 12px;font-size:11px;opacity:0.5;cursor:not-allowed;">▶ PROCESS NETDRONE</button>
+                  <button class="tbtn-clr" id="btn-clear-netdrone">✕ Clear</button>
+                </div>
+              </div>
+              <textarea id="txt-netdrone" class="data-ta" placeholder="Paste Netdrone data (TSV) here..."
+                style="flex:1;min-height:120px;"></textarea>
+              <div class="act-bar" style="padding:6px 10px;background:var(--bg-surface);border-top:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;">
+                <span id="lbl-netdrone-hint" style="font-size:11px;color:var(--txt-3);">Ready for Netdrone (TSV) data. Duplicate sites in Master Table will be skipped.</span>
+              </div>
             </div>
-            <div style="overflow-y:auto;flex:1;">
-              <table class="dt">
-                <thead>
-                  <tr>
-                    <th>Monitoring</th>
-                    <th>System</th>
-                    <th>Cluster</th>
-                    <th>New ID</th>
-                    <th>Site Name</th>
-                    <th>Tanggal</th>
-                    <th>Category</th>
-                    <th>TE Name</th>
-                  </tr>
-                </thead>
-                <tbody id="pivot-tbody">
-                  <tr><td colspan="8" class="text-center text-subtle" style="padding: 20px;">Belum ada data pivot diproses.</td></tr>
-                </tbody>
-              </table>
+
+            <div class="t-card" style="flex:1;margin-top:0;display:flex;flex-direction:column;">
+              <div class="t-card-head">
+                <span class="t-card-title">📋 Processed Netdrone Data</span>
+                <span id="lbl-netdrone-summary" style="font-size:11px;color:var(--txt-3);margin-left:auto;">0 entries processed</span>
+              </div>
+              <div style="overflow-y:auto;flex:1;">
+                <table class="dt">
+                  <thead>
+                    <tr>
+                      <th style="width:30px;">#</th>
+                      <th style="width:100px;">Site ID</th>
+                      <th style="width:180px;">Site Name</th>
+                      <th style="width:90px;">Vendor</th>
+                      <th style="width:150px;">Alarm / Impact</th>
+                      <th style="width:120px;">Cluster (DB)</th>
+                      <th style="width:140px;">TE / FME (DB)</th>
+                      <th>Status Match</th>
+                    </tr>
+                  </thead>
+                  <tbody id="netdrone-tbody">
+                    <tr>
+                      <td colspan="8" class="text-center text-subtle" style="padding: 20px;">No processed Netdrone data.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
+
         </div>
 
         <!-- Status Tab -->
@@ -150,11 +276,11 @@
               </div>
               <input class="sinput" id="st-search" placeholder="Cluster / Site name..." />
               <button class="tbtn-clr" id="st-search-reset">✕ Reset</button>
-              <div class="sort-grp">Urut Durasi:
+              <div class="sort-grp">Sort Duration:
                 <div class="segmented-control" id="st-filter-sort"
                   style="display:flex;gap:3px;background:transparent;padding:0;">
-                  <button class="srt seg-btn" data-val="desc">Terlama</button>
-                  <button class="srt seg-btn" data-val="asc">Terbaru</button>
+                  <button class="srt seg-btn" data-val="desc">Longest</button>
+                  <button class="srt seg-btn" data-val="asc">Newest</button>
                   <button class="srt seg-btn active" data-val="none">Default</button>
                 </div>
               </div>
@@ -178,12 +304,12 @@
               </table>
             </div>
             <div class="copy-bar">
-              <button class="cbtn ca" id="btn-st-copy-sel">📋 Copy Terpilih</button>
+              <button class="cbtn ca" id="btn-st-copy-sel">📋 Copy Selected</button>
               <button class="cbtn cd" id="btn-st-copy-down">❌ Copy DOWN</button>
               <button class="cbtn cu" id="btn-st-copy-up">✅ Copy UP</button>
-              <button class="cbtn ca" id="btn-st-copy-all">📄 Copy Semua</button>
-              <span id="st-copy-info" style="margin-left:auto;font-size:9.5px;color:var(--txt-3);">Shift+klik range |
-                Ctrl+klik multi | Ctrl+C copy</span>
+              <button class="cbtn ca" id="btn-st-copy-all">📄 Copy All</button>
+              <span id="st-copy-info" style="margin-left:auto;font-size:9.5px;color:var(--txt-3);">Shift+click range |
+                Ctrl+click multi | Ctrl+C copy</span>
             </div>
           </div>
         </div>
@@ -204,18 +330,21 @@
               <button class="tbtn" id="btn-pm-expand">⊞ Expand All</button>
               <button class="tbtn" id="btn-pm-remark"
                 style="margin-left:auto;font-weight:bold;color:var(--accent-lit);">Remark: ON</button>
-              <button class="cbtn ca" id="btn-pm-copy-sel">📋 Copy Terpilih</button>
-              <button class="cbtn ca" id="btn-pm-copy-all">📄 Copy Semua</button>
-              <button class="tbtn-p" id="btn-pm-wa-blast" style="margin-left:5px; background:var(--accent); color:#000; font-weight:800;">⚡ WA Blast TE</button>
+              <button class="cbtn ca" id="btn-pm-copy-sel">📋 Copy Selected</button>
+              <button class="cbtn ca" id="btn-pm-copy-all">📄 Copy All</button>
+              <button class="tbtn-p" id="btn-pm-wa-blast"
+                style="margin-left:5px; background:var(--accent); color:#000; font-weight:800;">⚡ WA Blast TE</button>
+              <button class="tbtn" id="btn-pm-blast-filter" style="margin-left:4px; font-weight:700;">⚙️ Blast
+                Filters</button>
             </div>
             <div class="ff">
-              <div class="fl">Filter Data:</div>
+              <div class="fl">Data Filter:</div>
               <input class="fi" id="pm-f-cl" placeholder="Cluster..." />
               <input class="fi" id="pm-f-ns" placeholder="New Site..." />
               <input class="fi" id="pm-f-rem" placeholder="Remark..." />
               <button class="tbtn-clr" id="btn-pm-reset">✕ Reset Filter</button>
             </div>
-            <textarea id="pm-preview-text" class="f-prev" readonly placeholder="Preview text..."></textarea>
+            <textarea id="pm-preview-text" class="f-prev" readonly placeholder="Message preview..."></textarea>
             <div style="overflow-y:auto;flex:1;">
               <table class="dt">
                 <thead>
@@ -250,7 +379,7 @@
                     <div class="srv-dot srv-off" id="srv-dot-indicator"></div><span id="wa-status-text"
                       style="font-weight:700;">DISCONNECTED</span>
                   </span>
-                  <button class="tbtn" id="btn-wa-status" style="font-size:9.5px;padding:2px 6px;">Cek Status</button>
+                  <button class="tbtn" id="btn-wa-status" style="font-size:9.5px;padding:2px 6px;">Check Status</button>
                   <button class="tbtn-a" id="btn-wa-start" style="font-size:9.5px;padding:2px 6px;">Start
                     Server</button>
                   <button class="tbtn-clr" id="btn-wa-reset"
@@ -261,21 +390,27 @@
               <div
                 style="display:flex;align-items:center;justify-content:space-between;padding:4px 10px;background:var(--bg-surface);border-bottom:1px solid var(--bdr);">
                 <span style="font-size:10px;color:var(--txt-2);font-weight:600;">Message Preview</span>
-                <button class="tbtn-a" id="btn-gen-wa" style="font-size:9.5px;padding:2px 8px;">▶ Generate Share
-                  WA</button>
+                <div style="display:flex;align-items:center;gap:10px;">
+                  <label style="display:inline-flex;align-items:center;gap:4px;font-size:10px;color:var(--txt-1);cursor:pointer;">
+                    <input type="checkbox" id="chk-wa-enable-netdrone" style="width:13px;height:13px;">
+                    <span>🛸 Include Netdrone</span>
+                  </label>
+                  <button class="tbtn-a" id="btn-gen-wa" style="font-size:9.5px;padding:2px 8px;">▶ Generate Share
+                    WA</button>
+                </div>
               </div>
               <textarea id="txt-wa-preview" class="bc-msg" style="width:100%;resize:none;border:none;outline:none;"
-                placeholder="Klik 'Generate' untuk membuat pesan..."></textarea>
+                placeholder="Click 'Generate' to create message..."></textarea>
               <div
                 style="padding:5px 10px;background:var(--bg-surface);border-top:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;">
-                <span id="wa-char-count" style="font-size:9.5px;color:var(--txt-3);">0 karakter | 0 baris</span>
+                <span id="wa-char-count" style="font-size:9.5px;color:var(--txt-3);">0 characters | 0 lines</span>
                 <button class="cbtn ca" id="btn-copy-wa">📋 Copy Text</button>
               </div>
             </div>
             <div style="display:flex;flex-direction:column;gap:8px;">
               <div class="t-card" style="flex:1;">
                 <div class="t-card-head"><span class="t-card-title">📡 Broadcast List</span><span id="wa-target-count"
-                    style="font-size:9.5px;color:var(--txt-3);">0 grup terpilih</span></div>
+                    style="font-size:9.5px;color:var(--txt-3);">0 groups selected</span></div>
                 <div style="flex:1;overflow-y:auto;padding:0;">
                   <table class="dt" style="width:100%;">
                     <tbody id="wa-targets-tbody">
@@ -283,15 +418,24 @@
                     </tbody>
                   </table>
                 </div>
+                <div id="wa-bc-progress-container" style="display:none;padding:6px 10px;background:var(--bg-surface);border-top:1px solid var(--bdr);">
+                  <div style="display:flex;justify-content:space-between;align-items:center;font-size:10.5px;margin-bottom:4px;">
+                    <span id="wa-bc-progress-status" style="font-weight:bold;color:var(--txt-1);">Preparing broadcast...</span>
+                    <span id="wa-bc-progress-percent" style="font-weight:bold;color:var(--accent-lit);">0%</span>
+                  </div>
+                  <div style="width:100%;height:6px;background:var(--bdr);border-radius:3px;overflow:hidden;">
+                    <div id="wa-bc-progress-fill" style="width:0%;height:100%;background:var(--accent-lit);transition:width 0.3s ease;"></div>
+                  </div>
+                </div>
                 <div style="padding:6px 10px;border-top:1px solid var(--bdr);"><button class="tbtn-p" id="btn-wa-send"
-                    style="width:100%;" disabled>KIRIM BROADCAST</button></div>
+                    style="width:100%;" disabled>SEND BROADCAST</button></div>
               </div>
               <div class="t-card" style="height:150px;flex-shrink:0;">
-                <div class="t-card-head"><span class="t-card-title">📄 Riwayat</span><span id="wa-bc-log-date-main"
+                <div class="t-card-head"><span class="t-card-title">📄 History</span><span id="wa-bc-log-date-main"
                     style="font-size:9.5px;color:var(--txt-3);"></span></div>
                 <textarea id="wa-bc-log-box-main"
                   style="flex:1;border:none;background:transparent;padding:10px;font-size:10px;color:var(--txt-3);resize:none;font-family:var(--mono);outline:none;"
-                  readonly>Belum ada broadcast hari ini.</textarea>
+                  readonly>No broadcast history for today.</textarea>
               </div>
             </div>
           </div>
@@ -303,14 +447,14 @@
             <div class="t-card-head">
               <span class="t-card-title">🔍 Database Lookup</span>
               <div style="display:flex;align-items:center;gap:5px;">
-                <button class="cbtn ca" id="btn-db-copy-all" style="margin-left:6px;">Copy Semua</button>
+                <button class="cbtn ca" id="btn-db-copy-all" style="margin-left:6px;">Copy All</button>
               </div>
             </div>
             <div
               style="display:flex;align-items:center;gap:6px;padding:6px 10px;background:var(--bg-surface);border-bottom:1px solid var(--bdr);flex-shrink:0;">
               <span style="font-size:10.5px;color:var(--txt-2);white-space:nowrap;">New Site ID:</span>
-              <input class="sinput" id="db-search-input" placeholder="Ketik ID Site..." style="flex:1;width:auto;" />
-              <button class="tbtn-a" id="btn-db-search" style="padding:3px 12px;">🔍 Cek</button>
+              <input class="sinput" id="db-search-input" placeholder="Type Site ID..." style="flex:1;width:auto;" />
+              <button class="tbtn-a" id="btn-db-search" style="padding:3px 12px;">🔍 Check</button>
               <button class="tbtn-clr" id="btn-db-clear">✕ Clear</button>
               <span id="db-search-status" style="font-size:10px;color:var(--red);margin-left:5px;"></span>
             </div>
@@ -430,9 +574,9 @@
           <div class="msg-head" style="margin-bottom:7px;border-radius:var(--r);flex-shrink:0;flex-wrap:wrap;gap:6px;">
             <span style="font-weight:700;font-size:13px;color:var(--txt-1);">🗺 Site Maps</span>
             <div style="display:flex;gap:4px;align-items:center;margin-left:auto;">
-              <input type="text" id="map-site-input" class="sinput" placeholder="Site ID / Alamat / Lat,Lon..."
+              <input type="text" id="map-site-input" class="sinput" placeholder="Site ID / Address / Lat,Lon..."
                 style="width:220px;">
-              <button class="tbtn-p" id="btn-map-search">🔍 Cari</button>
+              <button class="tbtn-p" id="btn-map-search">🔍 Search</button>
               <button class="tbtn" id="btn-map-street">🛣️ Street</button>
               <button class="tbtn" id="btn-map-screenshot"
                 style="border-color: rgba(74,130,196,.4); background: var(--blu-d); color: var(--blu);">📸
@@ -451,7 +595,7 @@
               style="position:absolute;top:10px;right:10px;width:300px;background:var(--bg-card);border:1px solid var(--bdr);border-radius:var(--r);z-index:1000;box-shadow:0 4px 15px rgba(0,0,0,0.5);display:flex;flex-direction:column;max-height:90%;overflow:hidden;">
               <div
                 style="padding:8px 12px;background:var(--bg-surface);border-bottom:1px solid var(--bdr);font-weight:bold;color:var(--txt-1);display:flex;justify-content:space-between;align-items:center;">
-                <span style="font-size:11.5px;">📡 5 BTS Terdekat</span>
+                <span style="font-size:11.5px;">📡 5 Nearest BTS</span>
                 <button class="tbtn-clr" id="btn-close-nearest" style="padding:2px 6px;">✕</button>
               </div>
               <div id="map-nearest-list"
@@ -476,7 +620,7 @@
           <div id="subtab-fmt" class="subtab-pane" style="flex-direction:column;flex:1;display:flex;overflow-y:auto;">
             <div class="msg-head" style="margin-bottom:7px;border-radius:var(--r);">
               <span id="fmt-header-title" style="color:var(--accent-lit);font-weight:700;font-size:12.5px;">🎨
-                Formatting Messages</span>
+                Message Formatting</span>
               <div class="segmented-control"
                 style="display:flex;gap:4px;margin-left:auto;background:transparent;padding:0;">
                 <button class="mode-btn seg-btn active" id="fmt-tab-msg">💬 Messages</button>
@@ -494,50 +638,50 @@
 
             <div class="ib" style="padding:10px;display:flex;flex-direction:column;gap:5px;">
               <div class="ff" style="border:none;padding:0;">
-                <div class="fl" style="text-align:right;">Baris entry:</div>
+                <div class="fl" style="text-align:right;">Entry line:</div>
                 <input type="text" id="fmt-msg-line" class="fi">
                 <div class="fh">{icon} {type} {cluster} {sitename} {time}</div>
               </div>
               <div class="ff" style="border:none;padding:0;">
                 <div class="fl" style="text-align:right;">Remark:</div>
                 <input type="text" id="fmt-msg-remark" class="fi" value="{remark}">
-                <div class="fh">kosongkan untuk sembunyikan remark</div>
+                <div class="fh">leave blank to hide remark</div>
               </div>
               <div class="ff" style="border:none;padding:0;">
-                <div class="fl" style="text-align:right;">Header group:</div>
+                <div class="fl" style="text-align:right;">Group header:</div>
                 <input type="text" id="fmt-msg-hdr" class="fi">
                 <div class="fh">{cluster} {pic} {rts}</div>
               </div>
               <div class="ff" style="border:none;padding:0;">
-                <div class="fl" style="text-align:right;">Label SITE DOWN:</div>
+                <div class="fl" style="text-align:right;">SITE DOWN Label:</div>
                 <input type="text" id="fmt-lbl-sd" class="fi">
                 <div class="fh"></div>
               </div>
               <div class="ff" style="border:none;padding:0;">
-                <div class="fl" style="text-align:right;">Label CELLS DOWN:</div>
+                <div class="fl" style="text-align:right;">CELLS DOWN Label:</div>
                 <input type="text" id="fmt-lbl-cd" class="fi">
                 <div class="fh"></div>
               </div>
               <div class="ff" style="border:none;padding:0;">
-                <div class="fl" style="text-align:right;">Label BCCH:</div>
+                <div class="fl" style="text-align:right;">BCCH Label:</div>
                 <input type="text" id="fmt-lbl-bcch" class="fi" value="*CELL DOWN BCCH Missing NOKIA :*">
-                <div class="fh">Header section BCCH</div>
+                <div class="fh">BCCH section header</div>
               </div>
               <div class="ff" style="border:none;padding:0;">
-                <div class="fl" style="text-align:right;">Keyword BCCH:</div>
+                <div class="fl" style="text-align:right;">BCCH Keyword:</div>
                 <input type="text" id="fmt-key-bcch" class="fi" value="BCCH">
-                <div class="fh">Kata kunci di REMARK untuk BCCH</div>
+                <div class="fh">REMARK keyword for BCCH</div>
               </div>
               <div class="ff" style="border:none;padding:0;">
-                <div class="fl" style="text-align:right;">Karakter icon:</div>
+                <div class="fl" style="text-align:right;">Icon character:</div>
                 <input type="text" id="fmt-icon-down" class="fi">
-                <div class="fh">Icon saat {icon} dipakai</div>
+                <div class="fh">Icon when {icon} is used</div>
               </div>
               <div class="ff" style="border:none;padding:0;">
                 <div class="fl" style="text-align:right;">Spacing:</div>
                 <label
                   style="display:flex;align-items:center;gap:5px;flex:1;cursor:pointer;color:var(--txt-1);font-size:11px;">
-                  <input type="checkbox" id="fmt-spacing-chk"> Tambah baris kosong antar entry
+                  <input type="checkbox" id="fmt-spacing-chk"> Add blank line between entries
                 </label>
                 <div class="fh"></div>
               </div>
@@ -549,14 +693,13 @@
             style="flex-direction:column;flex:1;display:flex;overflow:hidden;">
             <div class="msg-head" style="margin-bottom:7px;border-radius:var(--r);">
               <span style="color:var(--accent-lit);font-weight:700;font-size:12.5px;">📢 Broadcast Utilities</span>
-              <span style="color:var(--txt-3);font-size:10.5px;margin-left:8px;">Centang grup yang ingin masuk daftar
-                broadcast. WA harus terhubung.</span>
+              <span style="color:var(--txt-3);font-size:10.5px;margin-left:8px;">Check groups to include in broadcast list. WA must be connected.</span>
             </div>
 
             <div class="ff"
               style="background:var(--bg-card);border-radius:var(--r);border:1px solid var(--bdr);margin-bottom:7px;">
-              <div class="fl" style="width:auto;font-weight:700;">🔍 Cari Grup:</div>
-              <input type="text" id="wa-group-search" class="fi" placeholder="Ketik nama grup WA...">
+              <div class="fl" style="width:auto;font-weight:700;">🔍 Search Group:</div>
+              <input type="text" id="wa-group-search" class="fi" placeholder="Search WA group name...">
               <button id="btn-wa-clear-search" class="tbtn-clr">✕</button>
               <span id="wa-search-count" style="font-size:11px;color:var(--txt-3);width:80px;"></span>
             </div>
@@ -566,7 +709,7 @@
                 <thead>
                   <tr>
                     <th style="width: 50px;">Icon</th>
-                    <th>Nama Grup</th>
+                    <th>Group Name</th>
                   </tr>
                 </thead>
                 <tbody id="wa-groups-tbody">
@@ -578,19 +721,19 @@
             <div class="msg-head" style="margin-bottom:7px;border-radius:var(--r);justify-content:space-between;">
               <span id="wa-groups-status" style="color:var(--grn);font-weight:700;font-size:11px;"></span>
               <div style="display:flex;gap:5px;">
-                <button id="btn-wa-refresh-groups" class="tbtn">↻ Refresh dari WA</button>
-                <button id="btn-wa-save-groups" class="tbtn-p">💾 Simpan Pilihan</button>
+                <button id="btn-wa-refresh-groups" class="tbtn">↻ Refresh from WA</button>
+                <button id="btn-wa-save-groups" class="tbtn-p">💾 Save Selection</button>
               </div>
             </div>
 
             <!-- Broadcast Log -->
             <div class="ib" style="display:flex;flex-direction:column;height:180px;">
               <div class="ib-h" style="display:flex;justify-content:space-between;align-items:center;">
-                <span>📋 Riwayat Broadcast Hari Ini</span>
+                <span>📋 Today's Broadcast History</span>
                 <span style="font-size:10px;color:var(--txt-3);font-weight:normal;" id="wa-bc-log-date"></span>
               </div>
               <textarea id="wa-bc-log-box" class="data-ta" style="flex:1;border:none;border-radius:0;margin:0;"
-                readonly>Belum ada broadcast hari ini.</textarea>
+                readonly>No broadcast history for today.</textarea>
             </div>
           </div>
 
@@ -599,24 +742,32 @@
             style="flex-direction:column;flex:1;display:flex;overflow:hidden;">
             <div class="msg-head" style="margin-bottom:7px;border-radius:var(--r);">
               <span style="color:var(--accent-lit);font-weight:700;font-size:12.5px;">👷 TE Contacts Database</span>
-              <span style="color:var(--txt-3);font-size:10.5px;margin-left:8px;">Kelola daftar nomor WhatsApp TE di sini. Data tersimpan di wa_te_contacts.json.</span>
+              <span style="color:var(--txt-3);font-size:10.5px;margin-left:8px;">Manage TE WhatsApp contact numbers here. Saved in wa_te_contacts.json.</span>
             </div>
 
             <!-- Form tambah & filter -->
-            <div style="background:var(--bg-card); border:1px solid var(--bdr); border-radius:var(--r); padding:10px; margin-bottom:7px; display:flex; flex-direction:column; gap:8px;">
+            <div
+              style="background:var(--bg-card); border:1px solid var(--bdr); border-radius:var(--r); padding:10px; margin-bottom:7px; display:flex; flex-direction:column; gap:8px;">
               <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-                <span style="font-size:11px; font-weight:bold; color:var(--txt-2); white-space:nowrap;">Tambah Kontak:</span>
-                <input type="text" id="wa-te-input-name" class="fi" style="width:130px;" placeholder="Nama TE...">
-                <input type="text" id="wa-te-input-cluster" class="fi" style="width:130px;" placeholder="Cluster/Wilayah...">
-                <input type="text" id="wa-te-input-phone" class="fi" style="width:130px;" placeholder="No. WA (628...)...">
-                <button id="btn-wa-te-add" class="tbtn-p" style="font-size:11px; padding:3px 12px; height:24px; display:flex; align-items:center;">➕ Tambah</button>
+                <span style="font-size:11px; font-weight:bold; color:var(--txt-2); white-space:nowrap;">Add Contact:</span>
+                <input type="text" id="wa-te-input-name" class="fi" style="width:130px;" placeholder="TE Name...">
+                <input type="text" id="wa-te-input-cluster" class="fi" style="width:130px;"
+                  placeholder="Cluster/Area...">
+                <input type="text" id="wa-te-input-phone" class="fi" style="width:130px;"
+                  placeholder="WA Phone (628...)...">
+                <button id="btn-wa-te-add" class="tbtn-p"
+                  style="font-size:11px; padding:3px 12px; height:24px; display:flex; align-items:center;">➕
+                  Add</button>
               </div>
               <div style="width:100%; height:1px; background:var(--bdr);"></div>
               <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-                <span style="font-size:11px; font-weight:bold; color:var(--txt-2); white-space:nowrap;">Cari Kontak:</span>
-                <input type="text" id="wa-te-search" class="fi" style="flex:1;" placeholder="Ketik nama atau cluster untuk memfilter...">
-                <button id="btn-wa-te-clear-search" class="tbtn-clr" style="font-size:11px; padding:2px 8px;">✕ Clear</button>
-                <button id="btn-wa-te-import" class="tbtn-load" style="font-size:11px; padding:2px 10px;">📂 Import Excel (.xlsx)</button>
+                <span style="font-size:11px; font-weight:bold; color:var(--txt-2); white-space:nowrap;">Search Contact:</span>
+                <input type="text" id="wa-te-search" class="fi" style="flex:1;"
+                  placeholder="Type name or cluster to filter...">
+                <button id="btn-wa-te-clear-search" class="tbtn-clr" style="font-size:11px; padding:2px 8px;">✕
+                  Clear</button>
+                <button id="btn-wa-te-import" class="tbtn-load" style="font-size:11px; padding:2px 10px;">📂 Import
+                  Excel (.xlsx)</button>
               </div>
             </div>
 
@@ -625,10 +776,10 @@
               <table class="dt" style="width: 100%;">
                 <thead>
                   <tr>
-                    <th>Nama TE</th>
-                    <th>Cluster/Wilayah</th>
-                    <th>No. WhatsApp</th>
-                    <th style="width: 80px; text-align:center;">Aksi</th>
+                    <th>TE Name</th>
+                    <th>Cluster/Area</th>
+                    <th>WhatsApp Phone</th>
+                    <th style="width: 80px; text-align:center;">Action</th>
                   </tr>
                 </thead>
                 <tbody id="wa-te-tbody">
@@ -640,7 +791,7 @@
             <div class="msg-head" style="margin-bottom:7px; border-radius:var(--r); justify-content:space-between;">
               <span id="wa-te-status-lbl" style="color:var(--grn); font-weight:700; font-size:11px;"></span>
               <div style="display:flex; gap:5px;">
-                <button id="btn-wa-te-save" class="tbtn-p">💾 Simpan Perubahan</button>
+                <button id="btn-wa-te-save" class="tbtn-p">💾 Save Changes</button>
               </div>
             </div>
           </div>
@@ -660,8 +811,8 @@
               style="background:var(--bg-card);border-radius:var(--r);border:1px solid var(--bdr);margin-bottom:7px;">
               <div class="fl" style="width:auto;font-weight:700;">Site ID / Name:</div>
               <input type="text" id="db-edit-search-inp" class="fi" style="font-size:12px;padding:4px 8px;"
-                placeholder="Masukkan SITE ID...">
-              <button id="btn-db-edit-search" class="tbtn-p">🔍 Cari</button>
+                placeholder="Enter SITE ID...">
+              <button id="btn-db-edit-search" class="tbtn-p">🔍 Search</button>
               <button id="btn-db-edit-clear" class="tbtn-clr">✕ Clear</button>
               <span id="db-edit-search-status" style="font-size:11px;color:var(--txt-3);width:150px;"></span>
             </div>
@@ -768,8 +919,8 @@
                 </div>
               </div>
 
-              <button id="btn-db-edit-save" class="tbtn-p" style="margin-top:5px;padding:8px 15px;">💾 Simpan
-                Perubahan</button>
+              <button id="btn-db-edit-save" class="tbtn-p" style="margin-top:5px;padding:8px 15px;">💾 Save
+                Changes</button>
             </div>
           </div>
 
@@ -783,19 +934,17 @@
             <div class="ib"
               style="padding:15px;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:200px;text-align:center;">
               <div style="font-size:40px;margin-bottom:15px;">🚀</div>
-              <h3 style="margin:0 0 5px 0;color:var(--txt-1);">CJHelper Versi <span
-                  id="app-version-display">0.1.0</span></h3>
-              <p style="font-size:12px;color:var(--txt-3);margin-bottom:20px;">Pastikan Anda selalu menggunakan versi
-                terbaru untuk mendapatkan fitur terkini dan perbaikan bug.</p>
+              <h3 style="margin:0 0 5px 0;color:var(--txt-1);">CJHelper Version <span
+                  id="app-version-display">1.0.0</span></h3>
+              <p style="font-size:12px;color:var(--txt-3);margin-bottom:20px;">Ensure you are using the latest version for the newest features and bug fixes.</p>
 
               <div id="update-status-container"
                 style="margin-bottom:20px;padding:10px 20px;border-radius:var(--r);background:rgba(255,255,255,0.05);min-width:300px;">
-                <span id="update-status-text" style="font-size:13px;font-weight:700;color:var(--txt-2);">Klik tombol di
-                  bawah untuk cek update</span>
+                <span id="update-status-text" style="font-size:13px;font-weight:700;color:var(--txt-2);">Click button below to check for updates</span>
               </div>
 
               <div style="display:flex;gap:10px;">
-                <button id="btn-check-update" class="tbtn-p" style="padding:8px 20px;">🔍 Cek Update Sekarang</button>
+                <button id="btn-check-update" class="tbtn-p" style="padding:8px 20px;">🔍 Check Updates Now</button>
                 <button id="btn-install-update" class="tbtn-load hidden" style="padding:8px 20px;">📥 Download &
                   Install</button>
               </div>
@@ -815,11 +964,11 @@
             </div>
 
             <div class="ib">
-              <div class="ib-h">ℹ️ Informasi Aplikasi</div>
+              <div class="ib-h">ℹ️ Application Information</div>
               <div style="padding:10px;font-size:12px;color:var(--txt-3);line-height:1.6;">
-                • Nama: CJHelper Tauri<br>
+                • Name: CJHelper Tauri<br>
                 • Framework: Tauri 2.0 (Rust + JS)<br>
-                • Fitur: Data Processing, WA Broadcast, Maps Integration, DB Management<br>
+                • Features: Data Processing, WA Broadcast, Maps Integration, DB Management<br>
                 • Developer: youthloser666
               </div>
             </div>
@@ -830,23 +979,47 @@
       </main>
     </div>
   </div>
-  <!-- WA QR Modal -->
+  <!-- WA Log & QR Modal -->
   <div id="wa-qr-modal" class="modal hidden"
-    style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:9999;align-items:center;justify-content:center;backdrop-filter:blur(5px);">
+    style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:9999;align-items:center;justify-content:center;backdrop-filter:blur(5px);display:none;">
     <div
-      style="background:var(--bg-card);border:1px solid var(--bdr);border-radius:var(--r);width:360px;padding:25px;display:flex;flex-direction:column;align-items:center;box-shadow:0 15px 50px rgba(0,0,0,0.5);">
-      <h3 style="margin:0 0 10px 0;color:var(--txt-1);font-size:16px;">🔗 Scan QR WhatsApp</h3>
-      <p style="font-size:12px;color:var(--txt-3);text-align:center;line-height:1.5;margin-bottom:20px;">
-        1. Buka WhatsApp di HP<br>
-        2. Menu (⋮) atau Settings (⚙️) &gt; Linked Devices<br>
-        3. Link a Device &gt; Scan QR di bawah
-      </p>
-      <div id="wa-qr-container"
-        style="background:white;padding:15px;border-radius:10px;margin-bottom:20px;min-width:200px;min-height:200px;display:flex;align-items:center;justify-content:center;">
-        <img id="wa-qr-img" src="" alt="QR Code" style="width:200px;height:200px;">
+      style="background:var(--bg-card);border:1px solid var(--bdr);border-radius:12px;width:480px;max-width:90vw;padding:20px;display:flex;flex-direction:column;box-shadow:0 15px 50px rgba(0,0,0,0.5);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <h3 style="margin:0;color:var(--txt-1);font-size:15px;display:flex;align-items:center;gap:8px;">
+          <span>⚡ WhatsApp Server Status</span>
+        </h3>
+        <span id="wa-modal-status-badge"
+          style="font-size:11px;padding:3px 8px;border-radius:12px;background:rgba(255,255,255,0.1);color:var(--txt-2);font-weight:600;">DISCONNECTED</span>
       </div>
+
+      <!-- QR Container (dynamically shown when QR_READY) -->
+      <div id="wa-qr-wrapper"
+        style="display:none;flex-direction:column;align-items:center;margin-bottom:15px;background:var(--bg-surface);padding:15px;border-radius:8px;border:1px solid var(--bdr);">
+        <p style="font-size:12px;color:var(--txt-2);text-align:center;line-height:1.4;margin:0 0 10px 0;">
+          Please scan the QR Code below using your WhatsApp app:
+        </p>
+        <div id="wa-qr-container"
+          style="background:white;padding:12px;border-radius:8px;display:flex;align-items:center;justify-content:center;">
+          <img id="wa-qr-img" src="" alt="QR Code" style="width:190px;height:190px;">
+        </div>
+      </div>
+
+      <!-- Log Terminal Box -->
+      <div style="margin-bottom:15px;">
+        <div
+          style="font-size:11px;color:var(--txt-3);margin-bottom:4px;font-weight:600;display:flex;justify-content:space-between;align-items:center;">
+          <span>📋 Server Activity Logs</span>
+          <span style="font-size:10px;opacity:0.7;">Real-time</span>
+        </div>
+        <div id="wa-server-logs-container"
+          style="background:#0d1117;border:1px solid var(--bdr);border-radius:6px;padding:10px;height:160px;overflow-y:auto;font-family:monospace;font-size:11px;color:#38bdf8;line-height:1.5;">
+          <pre id="wa-server-logs"
+            style="margin:0;white-space:pre-wrap;word-break:break-all;">Starting WhatsApp server...</pre>
+        </div>
+      </div>
+
       <div style="display:flex;gap:10px;width:100%;">
-        <button class="tbtn-clr" id="btn-close-wa-qr" style="flex:1;padding:8px;">Tutup</button>
+        <button class="tbtn-clr" id="btn-close-wa-qr" style="flex:1;padding:8px;">Close</button>
       </div>
     </div>
   </div>
@@ -856,31 +1029,37 @@
     style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:9999;align-items:center;justify-content:center;backdrop-filter:blur(5px);display:none;">
     <div
       style="background:var(--bg-card);border:1px solid var(--bdr);border-radius:var(--r);width:600px;max-height:85%;padding:20px;display:flex;flex-direction:column;box-shadow:0 15px 50px rgba(0,0,0,0.5);">
-      <h3 style="margin:0 0 10px 0;color:var(--accent);font-size:16px;display:flex;align-items:center;gap:6px;">⚡ WA Blast Japri TE</h3>
+      <h3 style="margin:0 0 10px 0;color:var(--accent);font-size:16px;display:flex;align-items:center;gap:6px;">⚡ Direct WA Blast to TE</h3>
       <p style="font-size:12px;color:var(--txt-2);line-height:1.5;margin-bottom:15px;">
-        Sistem mendeteksi daftar TE yang memiliki site down. Centang TE yang ingin dikirimi pesan WhatsApp secara pribadi (Japri).
+        System detected TEs with down sites. Select TEs to send direct WhatsApp messages to.
       </p>
-      
+
       <!-- Progress Bar -->
-      <div id="wa-blast-te-progress-container" class="hidden" style="margin-bottom:15px; background: rgba(255,255,255,0.05); padding: 10px; border-radius: var(--r); border: 1px solid var(--bdr);">
-        <div style="display:flex; justify-content:space-between; font-size:11px; margin-bottom:5px; color:var(--txt-2);">
-          <span id="wa-blast-te-progress-status">Mengirim pesan...</span>
+      <div id="wa-blast-te-progress-container" class="hidden"
+        style="margin-bottom:15px; background: rgba(255,255,255,0.05); padding: 10px; border-radius: var(--r); border: 1px solid var(--bdr);">
+        <div
+          style="display:flex; justify-content:space-between; font-size:11px; margin-bottom:5px; color:var(--txt-2);">
+          <span id="wa-blast-te-progress-status">Sending messages...</span>
           <span id="wa-blast-te-progress-percent">0%</span>
         </div>
         <div style="width:100%; height:8px; background:rgba(255,255,255,0.1); border-radius:4px; overflow:hidden;">
-          <div id="wa-blast-te-progress-fill" style="width:0%; height:100%; background:var(--accent); transition:width 0.2s ease;"></div>
+          <div id="wa-blast-te-progress-fill"
+            style="width:0%; height:100%; background:var(--accent); transition:width 0.2s ease;"></div>
         </div>
       </div>
 
       <!-- TE Table Scroll Area -->
-      <div style="flex:1; overflow-y:auto; border:1px solid var(--bdr); border-radius:var(--r); margin-bottom:15px; background:var(--bg-input);">
+      <div
+        style="flex:1; overflow-y:auto; border:1px solid var(--bdr); border-radius:var(--r); margin-bottom:15px; background:var(--bg-input);">
         <table class="dt" style="width:100%;">
           <thead>
             <tr>
-              <th style="width:30px; text-align:center;"><input type="checkbox" id="chk-wa-blast-te-select-all" checked></th>
-              <th>Nama TE</th>
-              <th>No. WhatsApp</th>
+              <th style="width:30px; text-align:center;"><input type="checkbox" id="chk-wa-blast-te-select-all" checked>
+              </th>
+              <th>TE Name</th>
+              <th>WhatsApp Phone</th>
               <th style="width:70px; text-align:center;">Site Down</th>
+              <th style="width:70px; text-align:center;">Preview</th>
               <th>Status</th>
             </tr>
           </thead>
@@ -893,13 +1072,209 @@
       <!-- Delay and Buttons -->
       <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
         <div style="display:flex; align-items:center; gap:6px; font-size:12px; color:var(--txt-2);">
-          <span>Jeda (ms):</span>
-          <input type="number" id="num-wa-blast-te-delay" class="sinput" value="2000" style="width:70px; text-align:center;">
+          <span>Delay (ms):</span>
+          <input type="number" id="num-wa-blast-te-delay" class="sinput" value="2000"
+            style="width:70px; text-align:center;">
         </div>
         <div style="display:flex; gap:8px;">
-          <button class="tbtn-clr" id="btn-close-wa-blast-te" style="padding:6px 15px;">Batal</button>
-          <button class="tbtn-p" id="btn-execute-wa-blast-te" style="padding:6px 20px;">Kirim Blast</button>
+          <button class="tbtn-clr" id="btn-close-wa-blast-te" style="padding:6px 15px;">Cancel</button>
+          <button class="tbtn-p" id="btn-execute-wa-blast-te" style="padding:6px 20px;">Send Blast</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- WA Blast Filter Settings Modal -->
+  <div id="wa-blast-filter-modal" class="modal hidden"
+    style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:9999;align-items:center;justify-content:center;backdrop-filter:blur(5px);display:none;">
+    <div
+      style="background:var(--bg-card);border:1px solid var(--bdr);border-radius:12px;width:760px;max-width:95vw;max-height:88vh;padding:20px;display:flex;flex-direction:column;box-shadow:0 15px 50px rgba(0,0,0,0.5);">
+      <div
+        style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;border-bottom:1px solid var(--bdr);padding-bottom:10px;">
+        <h3 style="margin:0;color:var(--accent-lit);font-size:15px;display:flex;align-items:center;gap:8px;">
+          <span>⚙️ Direct WA Blast TE Filters</span>
+        </h3>
+        <button class="tbtn-clr" id="btn-close-wa-blast-filter" style="padding:2px 8px;font-size:12px;">✕</button>
+      </div>
+
+      <p style="font-size:11px;color:var(--txt-2);line-height:1.4;margin:0 0 10px 0;">
+        Select alarm types & check specific sites (sorted by Cluster) for Direct WA Blast TE.
+      </p>
+
+      <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:15px;overflow-y:auto;flex:1;padding-right:4px;">
+
+        <!-- Horizontal Grid for Global Toggles -->
+        <div style="display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:8px;margin-bottom:4px;">
+          <!-- Toggle 1: Filter Remark Trigger -->
+          <label
+            style="display:flex;align-items:center;justify-content:space-between;background:var(--bg-surface);padding:8px 10px;border-radius:6px;border:1px solid var(--bdr);cursor:pointer;">
+            <div>
+              <div style="font-size:11px;font-weight:bold;color:var(--txt-1);">Hardcoded Remark Trigger Filter</div>
+              <div style="font-size:9.5px;color:var(--txt-3);">fu team, follow up team, plan ts today, empty</div>
+            </div>
+            <input type="checkbox" id="chk-filter-remark-trigger" class="checkbox" checked style="width:16px;height:16px;">
+          </label>
+
+          <!-- Toggle 3: ENVA Alarm -->
+          <label
+            style="display:flex;align-items:center;justify-content:space-between;background:var(--bg-surface);padding:8px 10px;border-radius:6px;border:1px solid var(--bdr);cursor:pointer;">
+            <div style="display:flex;align-items:center;gap:6px;">
+              <span class="badge ba" style="font-size:9px;background:rgba(155,89,182,0.2);color:#9b59b6;">ENVA</span>
+              <div>
+                <div style="font-size:11px;font-weight:bold;color:var(--txt-1);">ENVA Alarm</div>
+                <div style="font-size:9.5px;color:var(--txt-3);">Huawei, Nokia, Neteco, Power</div>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;">
+              <span id="cnt-filter-enva" style="font-size:10px;font-weight:bold;color:var(--accent-lit);">0 items</span>
+              <input type="checkbox" id="chk-filter-enva" class="checkbox" style="width:16px;height:16px;">
+            </div>
+          </label>
+
+          <!-- Toggle 4: Stolen Battery & Cable -->
+          <label
+            style="display:flex;align-items:center;justify-content:space-between;background:var(--bg-surface);padding:8px 10px;border-radius:6px;border:1px solid var(--bdr);cursor:pointer;">
+            <div style="display:flex;align-items:center;gap:6px;">
+              <span class="badge br" style="font-size:9px;background:rgba(231,76,60,0.2);color:#e74c3c;">STOLLEN</span>
+              <div>
+                <div style="font-size:11px;font-weight:bold;color:var(--txt-1);">Stolen Battery & Cable</div>
+                <div style="font-size:9.5px;color:var(--txt-3);">Battery & Cable Stollen Indication</div>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;">
+              <span id="cnt-filter-stolen" style="font-size:10px;font-weight:bold;color:var(--accent-lit);">0 items</span>
+              <input type="checkbox" id="chk-filter-stolen" class="checkbox" style="width:16px;height:16px;">
+            </div>
+          </label>
+        </div>
+
+        <div style="font-size:11px;font-weight:bold;color:var(--txt-2);margin-top:2px;">Alarm Type Filter & Site Data Details (Sorted by Cluster):</div>
+
+        <!-- Section 2: Site Down Category -->
+        <div style="background:var(--bg-surface);border:1px solid var(--bdr);border-radius:8px;padding:8px 10px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <div style="display:flex;align-items:center;gap:8px;cursor:pointer;" id="toggle-expand-sitedown">
+              <span class="badge br" style="font-size:9.5px;">SITEDOWN</span>
+              <span style="font-size:11.5px;font-weight:600;color:var(--txt-1);">Site Fully Down</span>
+              <span style="font-size:10px;color:var(--accent-lit);" id="icon-expand-sitedown">▼ Details</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <span id="cnt-filter-sitedown" style="font-size:10.5px;font-weight:bold;color:var(--accent-lit);">0 items</span>
+              <input type="checkbox" id="chk-filter-sitedown" class="checkbox" checked style="width:16px;height:16px;">
+            </div>
+          </div>
+          <div id="list-container-sitedown"
+            style="margin-top:8px;max-height:180px;overflow-y:auto;border-top:1px solid var(--bdr);padding-top:6px;display:none;">
+            <table class="dt" style="width:100%;font-size:10.5px;">
+              <thead>
+                <tr>
+                  <th style="width:26px;text-align:center;"><input type="checkbox" id="chk-sitedown-select-all" checked></th>
+                  <th style="width:85px;">Site ID</th>
+                  <th style="width:110px;">Cluster</th>
+                  <th>Site Name</th>
+                  <th>Remark</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-filter-sitedown"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Section 3: Cells Down Category -->
+        <div style="background:var(--bg-surface);border:1px solid var(--bdr);border-radius:8px;padding:8px 10px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <div style="display:flex;align-items:center;gap:8px;cursor:pointer;" id="toggle-expand-celldown">
+              <span class="badge bb" style="font-size:9.5px;">CELLDOWN</span>
+              <span style="font-size:11.5px;font-weight:600;color:var(--txt-1);">Cells Down</span>
+              <span style="font-size:10px;color:var(--accent-lit);" id="icon-expand-celldown">▼ Details</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <span id="cnt-filter-celldown" style="font-size:10.5px;font-weight:bold;color:var(--accent-lit);">0 items</span>
+              <input type="checkbox" id="chk-filter-celldown" class="checkbox" checked style="width:16px;height:16px;">
+            </div>
+          </div>
+          <div id="list-container-celldown"
+            style="margin-top:8px;max-height:180px;overflow-y:auto;border-top:1px solid var(--bdr);padding-top:6px;display:none;">
+            <table class="dt" style="width:100%;font-size:10.5px;">
+              <thead>
+                <tr>
+                  <th style="width:26px;text-align:center;"><input type="checkbox" id="chk-celldown-select-all" checked></th>
+                  <th style="width:85px;">Site ID</th>
+                  <th style="width:110px;">Cluster</th>
+                  <th>Site Name</th>
+                  <th>Remark</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-filter-celldown"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Section 4: BCCH Missing -->
+        <div style="background:var(--bg-surface);border:1px solid var(--bdr);border-radius:8px;padding:8px 10px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <div style="display:flex;align-items:center;gap:8px;cursor:pointer;" id="toggle-expand-bcch">
+              <span class="badge ba" style="font-size:9.5px;">BCCH</span>
+              <span style="font-size:11.5px;font-weight:600;color:var(--txt-1);">BCCH Missing Nokia</span>
+              <span style="font-size:10px;color:var(--accent-lit);" id="icon-expand-bcch">▼ Details</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <span id="cnt-filter-bcch" style="font-size:10.5px;font-weight:bold;color:var(--accent-lit);">0 items</span>
+              <input type="checkbox" id="chk-filter-bcch" class="checkbox" checked style="width:16px;height:16px;">
+            </div>
+          </div>
+          <div id="list-container-bcch"
+            style="margin-top:8px;max-height:180px;overflow-y:auto;border-top:1px solid var(--bdr);padding-top:6px;display:none;">
+            <table class="dt" style="width:100%;font-size:10.5px;">
+              <thead>
+                <tr>
+                  <th style="width:26px;text-align:center;"><input type="checkbox" id="chk-bcch-select-all" checked></th>
+                  <th style="width:85px;">Site ID</th>
+                  <th style="width:110px;">Cluster</th>
+                  <th>Site Name</th>
+                  <th>Remark</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-filter-bcch"></tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+
+      <div style="display:flex;gap:10px;width:100%;">
+        <button class="tbtn-p" id="btn-save-wa-blast-filter" style="flex:1;padding:7px;font-weight:bold;">💾 Save Filter</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- WA Blast Message Preview Modal -->
+  <div id="wa-blast-preview-modal" class="modal hidden"
+    style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:10000;align-items:center;justify-content:center;backdrop-filter:blur(5px);display:none;">
+    <div
+      style="background:var(--bg-card);border:1px solid var(--bdr);border-radius:12px;width:520px;max-width:92vw;max-height:85vh;padding:20px;display:flex;flex-direction:column;box-shadow:0 15px 50px rgba(0,0,0,0.5);">
+      <div
+        style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;border-bottom:1px solid var(--bdr);padding-bottom:10px;">
+        <h3 style="margin:0;color:var(--accent-lit);font-size:15px;display:flex;align-items:center;gap:8px;">
+          <span>👁️ Direct TE Message Preview</span>
+        </h3>
+        <button class="tbtn-clr" id="btn-close-wa-blast-preview" style="padding:2px 8px;font-size:12px;">✕</button>
+      </div>
+
+      <div style="font-size:12px;color:var(--txt-1);margin-bottom:10px;font-weight:bold;">
+        Target: <span id="lbl-preview-te-name" style="color:var(--grn);">—</span> <span id="lbl-preview-te-phone"
+          style="color:var(--txt-3);font-size:11px;">—</span>
+      </div>
+
+      <div style="flex:1;display:flex;flex-direction:column;margin-bottom:15px;overflow:hidden;">
+        <textarea id="txt-preview-te-msg" class="data-ta"
+          style="flex:1;min-height:220px;padding:12px;font-family:var(--mono);font-size:11px;line-height:1.5;resize:none;outline:none;"
+          readonly></textarea>
+      </div>
+
+      <div style="display:flex;gap:10px;width:100%;">
+        <button class="cbtn ca" id="btn-copy-preview-te-msg" style="flex:1;padding:8px;">📋 Copy Message</button>
+        <button class="tbtn-clr" id="btn-done-preview-te" style="padding:8px 20px;">Close</button>
       </div>
     </div>
   </div>

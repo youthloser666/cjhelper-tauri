@@ -1,11 +1,11 @@
 {
-    "version": "v0.2.4",
-    "notes": "Menambahkan perbaikan TLP database dan perbesaran UI scale.",
-    "pub_date": "2026-05-24T00:28:00Z",
-    "platforms": {
-        "windows-x86_64": {
-            "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTZ1ZLUGtIaWFXLzhPYnZKYWMyamtveFRlR2xBN0R2WmVmeGcxN1YzaW5BbTVOZVJOT2RLcStYT3RWYzZ1dHdaM2xucVB3M29LUFVLQVFDQTBaZEk4K2tBejQrdWM1MFFNPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5NTc4MzQ2CWZpbGU6Y2poZWxwZXItYXBwXzAuMi40X3g2NC1zZXR1cC5leGUKSzhXYUwzaWxaMzlTOVlrNEkwMzgrZndEWkwzMktReWlqYTJZWTBmR2FPTE9nTStrdFBqeEZTMzU3bzlibUZMcXNWb2JQSHEvand4SVFZMThaSXkyRGc9PQo=",
-            "url": "https://github.com/youthloser666/cjhelper-tauri/releases/download/CJH/cjhelper-app_0.2.4_x64-setup.exe"
-        }
+  "version": "1.0.0",
+  "notes": "Release v1.0.0: Full English UI translation, direct WA Blast TE with strict contact DB matching, FM Office extraction, and performance fixes.",
+  "pub_date": "2026-07-29T15:08:00Z",
+  "platforms": {
+    "windows-x86_64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTR3drbW5nS2I5Rm5pWG1JTFF4cWhOTFpaL3orMHk3NkgrdGNicjBxRml5OGFleXRxejRhMHBnejRNOW41R1R4bERkSmNRZUNGaURCQzRIV0lybFYxZG0yMXFzRkVldHdVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MzM3NzMyCWZpbGU6Y2poZWxwZXItYXBwXzEuMC4wX3g2NC1zZXR1cC5leGUKcW4wbFY1dzJuMzdSWnpBd3FjbFpNYnFvdEdwNld0YkRhdkNUZmFYSENtUzltUU11Uk8rMEYycHZ0dUcxb3hTYTFWK0xBSFV1NVVHa2lJVS9WWXAvREE9PQo=",
+      "url": "https://github.com/youthloser666/cjhelper-tauri/releases/download/CJH/cjhelper-app_1.0.0_x64-setup.exe"
     }
+  }
 }

@@ -2,6 +2,7 @@ const tauriCore = window.__TAURI__ ? window.__TAURI__.core : null;
 const invoke = tauriCore ? tauriCore.invoke : null;
 let checkFn = null;
 let pivotData = [];
+let netdroneData = [];
 if (window.__TAURI__) {
   if (window.__TAURI__.updater && typeof window.__TAURI__.updater.check === 'function') {
     checkFn = window.__TAURI__.updater.check;
@@ -43,7 +44,8 @@ navBtns.forEach(btn => {
 
     btn.classList.add('active');
     const targetId = btn.dataset.target;
-    document.getElementById(targetId).classList.remove('hidden');
+    const targetElem = document.getElementById(targetId);
+    if (targetElem) targetElem.classList.remove('hidden');
 
     // Auto-generate WA Broadcast message when navigating to Broadcast tab to ensure actual data
     if (targetId === 'tab-wa') {
@@ -54,6 +56,39 @@ navBtns.forEach(btn => {
     }
   });
 });
+
+// Data Table Sub-tab Navigation
+document.querySelectorAll('#datatable-subtab-seg .seg-btn').forEach(btn => {
+  btn.addEventListener('click', (e) => {
+    const parent = e.target.closest('#datatable-subtab-seg');
+    if (parent) {
+      parent.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
+    }
+    e.target.classList.add('active');
+
+    const subtarget = e.target.dataset.subtarget;
+    document.querySelectorAll('.dt-subtab-pane').forEach(pane => pane.classList.add('hidden'));
+    const targetPane = document.getElementById(subtarget);
+    if (targetPane) targetPane.classList.remove('hidden');
+  });
+});
+
+function resetPivotAndNetdroneData() {
+  const txtPivot = document.getElementById('txt-pivot');
+  if (txtPivot) txtPivot.value = '';
+  pivotData = [];
+  localStorage.removeItem('cjhelper_pivot_data');
+  localStorage.removeItem('cjhelper_pivot_text');
+  const pivotTbody = document.getElementById('pivot-tbody');
+  if (pivotTbody) pivotTbody.innerHTML = '<tr><td colspan="8" class="text-center text-subtle" style="padding: 20px;">Belum ada data pivot diproses.</td></tr>';
+
+  const txtNetdrone = document.getElementById('txt-netdrone');
+  if (txtNetdrone) txtNetdrone.value = '';
+  netdroneData = [];
+  localStorage.removeItem('cjhelper_netdrone_data');
+  localStorage.removeItem('cjhelper_netdrone_text');
+  if (typeof renderNetdroneTable === 'function') renderNetdroneTable();
+}
 
 // Tauri Commands - Input & Status
 const btnProcess = document.getElementById('btn-process');
@@ -71,6 +106,22 @@ const statusTbody = document.getElementById('status-tbody');
 
 let statusData = [];
 let lastSelectedIndex = -1;
+let activeRegionFilter = 'ALL'; // 'ALL', 'CJN', 'CJS'
+
+function getSiteRegion(s) {
+  if (!s) return 'CJN';
+  const text = `${s.cluster || ''} ${s.site_name || ''} ${s.remark || ''} ${s.pic || ''}`.toUpperCase();
+  if (text.includes('CJS') || text.includes('SOUTH')) return 'CJS';
+  if (text.includes('CJN') || text.includes('NORTH')) return 'CJN';
+
+  const cjnKeywords = ["SEMARANG", "DEMAK", "KUDUS", "PATI", "JEPARA", "GROBOGAN", "BLORA", "REMBANG", "PEKALONGAN", "BATANG", "PEMALANG", "TEGAL", "BREBES", "KENDAL"];
+  const cjsKeywords = ["SOLO", "SURAKARTA", "BOYOLALI", "SUKOHARJO", "KARANGANYAR", "WONOGIRI", "SRAGEN", "KLATEN", "MAGELANG", "PURWOREJO", "TEMANGGUNG", "WONOSOBO", "KEBUMEN", "BANYUMAS", "PURWOKERTO", "CILACAP", "PURBALINGGA", "BANJARNEGARA"];
+
+  if (cjnKeywords.some(kw => text.includes(kw))) return 'CJN';
+  if (cjsKeywords.some(kw => text.includes(kw))) return 'CJS';
+
+  return 'CJN';
+}
 
 function renderStatus() {
   const filterStatus = document.querySelector('#st-filter-status .active')?.dataset.val || 'ALL';
@@ -78,6 +129,10 @@ function renderStatus() {
   const searchStr = document.getElementById('st-search').value.toLowerCase().trim();
 
   let filtered = statusData;
+
+  if (activeRegionFilter !== 'ALL') {
+    filtered = filtered.filter(s => getSiteRegion(s) === activeRegionFilter);
+  }
 
   if (filterStatus !== 'ALL') {
     filtered = filtered.filter(s => s.status === filterStatus);
@@ -231,10 +286,14 @@ document.addEventListener('keydown', async (e) => {
 async function checkStatus() {
   try {
     statusData = await invoke('check_site_status');
+    const regionSites = activeRegionFilter === 'ALL' 
+      ? statusData 
+      : statusData.filter(s => getSiteRegion(s) === activeRegionFilter);
+
     let upCount = 0;
     let downCount = 0;
 
-    statusData.forEach(s => {
+    regionSites.forEach(s => {
       if (s.status === 'UP') upCount++;
       else downCount++;
     });
@@ -268,6 +327,9 @@ btnProcess.addEventListener('click', async () => {
     return;
   }
 
+  // Reset Data Pivot & Data Netdrone per user specification
+  resetPivotAndNetdroneData();
+
   statusBar.textContent = "Memproses data...";
   try {
     const res = await invoke('parse_pasted_table', { text });
@@ -276,15 +338,15 @@ btnProcess.addEventListener('click', async () => {
     if (res.status === "UNCHANGED") {
       statusBar.textContent = `⚠️ Data sama — ✅ snapshot dipertahankan. (${res.count} baris, ${new Date().toLocaleTimeString('id-ID')})`;
     } else if (res.status === "UPDATED_DETAILS") {
-      statusBar.textContent = `✅ Detail diperbarui — snapshot dipertahankan. (${res.count} baris, ${new Date().toLocaleTimeString('id-ID')})`;
+      statusBar.textContent = `✅ Details updated — snapshot maintained. (${res.count} rows, ${new Date().toLocaleTimeString('id-ID')})`;
     } else if (res.status === "NEW_BASELINE") {
-      document.getElementById('lbl-snapshot').textContent = `Baseline: ${res.count} baris (proses pertama)`;
-      statusBar.textContent = `Selesai! Data: ${res.count} baris diproses.`;
+      document.getElementById('lbl-snapshot').textContent = `Baseline: ${res.count} rows (first run)`;
+      statusBar.textContent = `Done! Data: ${res.count} rows processed.`;
     } else if (res.status === "UPDATED") {
-      document.getElementById('lbl-snapshot').textContent = `Snapshot ${res.count} baris — disimpan pukul ${new Date().toLocaleTimeString('id-ID')}`;
-      statusBar.textContent = `Selesai! Data: ${res.count} baris diproses.`;
+      document.getElementById('lbl-snapshot').textContent = `Snapshot ${res.count} rows — saved at ${new Date().toLocaleTimeString('id-ID')}`;
+      statusBar.textContent = `Done! Data: ${res.count} rows processed.`;
     } else {
-      statusBar.textContent = `Selesai! Data kosong atau format tidak dikenali.`;
+      statusBar.textContent = `Done! Data is empty or format not recognized.`;
     }
 
     await checkStatus();
@@ -299,23 +361,81 @@ if (btnLoadDb) {
     try {
       const selectedPath = await invoke('pick_db_file');
       if (selectedPath) {
-        document.getElementById('lbl-cek-db').textContent = `Memuat file ${selectedPath.split(/[\\/]/).pop()}...`;
-        document.getElementById('lbl-cek-db').className = "text-info text-sm";
-        // Give UI time to update
-        await new Promise(r => setTimeout(r, 50));
+        const fileName = selectedPath.split(/[\\/]/).pop();
+        const lblDash = document.getElementById('lbl-dash-db-filename');
+        if (lblDash) {
+          lblDash.textContent = `⏳ Memuat & memproses ${fileName}...`;
+          lblDash.style.color = "var(--amb)";
+        }
+        
+        const lblCek = document.getElementById('lbl-cek-db');
+        if (lblCek) {
+          lblCek.textContent = `⏳ Memuat & memproses file Excel ${fileName}...`;
+          lblCek.className = "text-info text-sm";
+        }
+
+        await new Promise(r => setTimeout(r, 60));
 
         const count = await invoke('load_db_excel', { path: selectedPath });
         document.getElementById('dash-db').textContent = count;
-        document.getElementById('lbl-cek-db').textContent = `DB Loaded: ${selectedPath.split(/[\\/]/).pop()} (${count} baris)`;
-        document.getElementById('lbl-cek-db').className = "text-success text-sm";
+
+        if (lblDash) {
+          lblDash.textContent = `📁 ${fileName} (${count} baris)`;
+          lblDash.style.color = "var(--accent-lit)";
+        }
+        if (lblCek) {
+          lblCek.textContent = `DB Loaded: ${fileName} (${count} baris)`;
+          lblCek.className = "text-success text-sm";
+        }
       } else {
-        document.getElementById('lbl-cek-db').textContent = "Batal memilih file.";
-        document.getElementById('lbl-cek-db').className = "text-warning text-sm";
+        const lblDash = document.getElementById('lbl-dash-db-filename');
+        if (lblDash && lblDash.textContent.includes('Memuat')) lblDash.textContent = "Belum di-load";
       }
     } catch (err) {
-      document.getElementById('lbl-cek-db').textContent = "Error: " + err;
-      document.getElementById('lbl-cek-db').className = "text-error text-sm";
+      const lblDash = document.getElementById('lbl-dash-db-filename');
+      if (lblDash) {
+        lblDash.textContent = "❌ Gagal memuat DB";
+        lblDash.style.color = "var(--red)";
+      }
       console.error(err);
+    }
+  });
+}
+
+const btnDashImportContact = document.getElementById('btn-dash-import-contact');
+if (btnDashImportContact) {
+  btnDashImportContact.addEventListener('click', async () => {
+    try {
+      const selectedPath = await invoke('pick_db_file');
+      if (selectedPath) {
+        const fileName = selectedPath.split(/[\\/]/).pop();
+        const lblStatus = document.getElementById('lbl-dash-contact-status');
+        if (lblStatus) {
+          lblStatus.textContent = `⏳ Memuat & memproses ${fileName}...`;
+          lblStatus.style.color = "var(--amb)";
+        }
+
+        await new Promise(r => setTimeout(r, 60));
+
+        const count = await invoke('load_te_contacts_excel', { path: selectedPath });
+
+        if (lblStatus) {
+          lblStatus.textContent = `📁 ${fileName} (${count} kontak)`;
+          lblStatus.style.color = "var(--grn)";
+        }
+
+        await loadWaTeContacts();
+        if (typeof renderWaTeContactsTable === 'function') {
+          renderWaTeContactsTable(typeof waTeSearch !== 'undefined' && waTeSearch ? waTeSearch.value : "");
+        }
+      }
+    } catch (err) {
+      alert("Gagal mengimpor Excel TE: " + err);
+      const lblStatus = document.getElementById('lbl-dash-contact-status');
+      if (lblStatus) {
+        lblStatus.textContent = "❌ Gagal mengimpor Excel";
+        lblStatus.style.color = "var(--red)";
+      }
     }
   });
 }
@@ -326,6 +446,7 @@ document.getElementById('btn-reset-snap').addEventListener('click', async () => 
     await invoke('clear_data');
     txtMaster.value = '';
     dashMaster.textContent = '0';
+    resetPivotAndNetdroneData();
     document.getElementById('lbl-snapshot').textContent = `Direset — proses berikutnya akan dipakai sebagai baseline`;
     document.getElementById('lbl-snapshot').className = "text-warning ml-2";
     statusBar.textContent = `Snapshot dan data master direset.`;
@@ -339,6 +460,7 @@ btnClear.addEventListener('click', async () => {
   txtMaster.value = '';
   await invoke('clear_data');
   dashMaster.textContent = '0';
+  resetPivotAndNetdroneData();
   statusBar.textContent = 'Data di-clear.';
 });
 
@@ -398,46 +520,71 @@ let waPollTimeout = null;
 async function checkWaStatus() {
   try {
     const status = await invoke('wa_status');
-    const st = status.status || "DISCONNECTED";
-    const qr = status.qr;
+    const st = status?.status || "DISCONNECTED";
+    const qr = status?.qr;
+    const logs = status?.logs || [];
 
     // Adaptive interval
-    const nextInterval = (st === "QR_READY") ? 2000 : 10000;
+    const nextInterval = (st === "QR_READY" || document.getElementById('wa-qr-modal')?.style.display === 'flex') ? 1500 : 10000;
     if (nextInterval !== waPollInterval) {
       waPollInterval = nextInterval;
       startWaPolling();
     }
 
+    // Render Logs in Modal
+    const logsPre = document.getElementById('wa-server-logs');
+    const logsContainer = document.getElementById('wa-server-logs-container');
+    if (logsPre && logs.length > 0) {
+      logsPre.textContent = logs.join('\n');
+      if (logsContainer) {
+        logsContainer.scrollTop = logsContainer.scrollHeight;
+      }
+    }
+
+    // Update Status Badge in Modal
+    const modalBadge = document.getElementById('wa-modal-status-badge');
+    if (modalBadge) {
+      modalBadge.textContent = st;
+      if (st === "CONNECTED") {
+        modalBadge.style.background = "rgba(46, 204, 113, 0.2)";
+        modalBadge.style.color = "#2ecc71";
+      } else if (st === "QR_READY") {
+        modalBadge.style.background = "rgba(241, 196, 15, 0.2)";
+        modalBadge.style.color = "#f1c40f";
+      } else {
+        modalBadge.style.background = "rgba(231, 76, 60, 0.2)";
+        modalBadge.style.color = "#e74c3c";
+      }
+    }
+
+    // Main header status indicator
     if (waStatusText) {
       waStatusText.textContent = st;
       if (st === "CONNECTED") {
         waStatusText.style.color = "var(--grn)";
         waStatusText.textContent = "CONNECTED";
         document.getElementById('srv-dot-indicator')?.classList.replace('srv-off', 'srv-on');
-        document.getElementById('wa-qr-modal')?.classList.add('hidden');
       } else if (st === "QR_READY") {
         waStatusText.style.color = "var(--amb)";
         waStatusText.textContent = "SCAN QR";
         document.getElementById('srv-dot-indicator')?.classList.replace('srv-on', 'srv-off');
-
-        if (qr) {
-          const qrImg = document.getElementById('wa-qr-img');
-          const qrModal = document.getElementById('wa-qr-modal');
-          const newSrc = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qr)}`;
-          if (qrImg && qrImg.src !== newSrc) {
-            qrImg.src = newSrc;
-          }
-          if (qrModal && qrModal.classList.contains('hidden')) {
-            qrModal.classList.remove('hidden');
-            qrModal.style.display = 'flex';
-          }
-        }
       } else {
         waStatusText.style.color = "var(--red)";
         document.getElementById('srv-dot-indicator')?.classList.replace('srv-on', 'srv-off');
-        // Don't auto-hide if user manually closed it, but hide if server stopped
-        if (st === "DISCONNECTED") document.getElementById('wa-qr-modal')?.classList.add('hidden');
       }
+    }
+
+    // Handle QR code display
+    const qrWrapper = document.getElementById('wa-qr-wrapper');
+    if (st === "QR_READY" && qr) {
+      if (qrWrapper) qrWrapper.style.display = 'flex';
+      const qrImg = document.getElementById('wa-qr-img');
+      const newSrc = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qr)}`;
+      if (qrImg && qrImg.src !== newSrc) {
+        qrImg.src = newSrc;
+      }
+    } else {
+      if (qrWrapper) qrWrapper.style.display = 'none';
     }
 
     const sendBtn = document.getElementById('btn-wa-send');
@@ -465,18 +612,43 @@ function startWaPolling() {
   });
 }
 
+function showWaModal() {
+  const qrModal = document.getElementById('wa-qr-modal');
+  if (qrModal) {
+    qrModal.classList.remove('hidden');
+    qrModal.style.display = 'flex';
+  }
+}
+
 document.getElementById('btn-close-wa-qr').addEventListener('click', () => {
   const modal = document.getElementById('wa-qr-modal');
   modal.classList.add('hidden');
   modal.style.display = 'none';
 });
 
-if (btnWaStatus) btnWaStatus.addEventListener('click', checkWaStatus);
+if (btnWaStatus) {
+  btnWaStatus.addEventListener('click', () => {
+    showWaModal();
+    checkWaStatus();
+  });
+}
 startWaPolling();
 
 if (btnWaStart) {
   btnWaStart.addEventListener('click', async () => {
     try {
+      // 1. Tampilkan modal log & QR secara langsung
+      showWaModal();
+
+      const logsPre = document.getElementById('wa-server-logs');
+      if (logsPre) logsPre.textContent = "[SYSTEM] Memulai WhatsApp Server...";
+      const modalBadge = document.getElementById('wa-modal-status-badge');
+      if (modalBadge) {
+        modalBadge.textContent = "STARTING...";
+        modalBadge.style.background = "rgba(52, 152, 219, 0.2)";
+        modalBadge.style.color = "#3498db";
+      }
+
       if (waStatusText) waStatusText.textContent = "Checking...";
 
       // Check if server is already running
@@ -495,11 +667,18 @@ if (btnWaStart) {
           waStatusText.textContent = "Server already active!";
           waStatusText.className = "text-xs text-success font-bold";
         }
+        await checkWaStatus();
         return;
       }
 
       if (waStatusText) waStatusText.textContent = "Starting...";
+
+      // Fast polling saat start server
+      waPollInterval = 1000;
+      startWaPolling();
+
       await invoke('wa_start_server');
+
       if (waStatusText) {
         waStatusText.textContent = "Server node started!";
         waStatusText.className = "text-xs text-success font-bold";
@@ -509,6 +688,8 @@ if (btnWaStart) {
         waStatusText.textContent = "Error: " + err;
         waStatusText.className = "text-xs text-error font-bold";
       }
+      const logsPre = document.getElementById('wa-server-logs');
+      if (logsPre) logsPre.textContent += `\n[ERROR] Gagal memanggil wa_start_server: ${err}`;
     }
   });
 }
@@ -575,12 +756,82 @@ function generateShareWA(statuses) {
   };
 
   const downs = statuses.filter(s => s.status === 'DOWN');
-  const ful = natSort(downs.filter(s => s.impact && s.impact.toLowerCase().includes('fully')));
-  const cel = natSort(downs.filter(s => !s.impact || !s.impact.toLowerCase().includes('fully')));
+
+  const chkWaEnableNetdrone = document.getElementById('chk-wa-enable-netdrone');
+  const netdroneEnabled = chkWaEnableNetdrone ? chkWaEnableNetdrone.checked : false;
+  if (netdroneEnabled && typeof netdroneData !== 'undefined' && netdroneData && netdroneData.length > 0) {
+    netdroneData.filter(d => !d.skipped && d.matchedDb).forEach(nr => {
+      const siteObj = {
+        status: 'DOWN',
+        impact: 'Full Sitedown',
+        new_site: nr.siteId,
+        old_site: "",
+        site_name: nr.siteName,
+        cluster: nr.cluster || "",
+        pic: nr.pic || "",
+        rts: nr.rts || "",
+        start_time: nr.startTime || "",
+        start_timestamp: 0,
+        agging: "",
+        remark: nr.remark || "",
+        category: nr.category || "",
+        site_class: nr.siteClass || "",
+        vendor: nr.vendor || "",
+        is_netdrone: true
+      };
+      if (regionLabel === 'ALL' || getSiteRegion(siteObj) === regionLabel) {
+        downs.push(siteObj);
+      }
+    });
+  }
+
+  const ful = natSort(downs.filter(s => s.is_netdrone || (s.impact && (s.impact.toLowerCase().includes('fully') || s.impact.toLowerCase().includes('sitedown')))));
+  const cel = natSort(downs.filter(s => !s.is_netdrone && (!s.impact || (!s.impact.toLowerCase().includes('fully') && !s.impact.toLowerCase().includes('sitedown')))));
 
   const bcch_kw = (fmtBc.key_bcch || "BCCH").toUpperCase();
   const cel_bcch = cel.filter(s => (s.remark || "").toUpperCase().includes(bcch_kw));
   const cel_normal = cel.filter(s => !((s.remark || "").toUpperCase().includes(bcch_kw)));
+
+  const sec_sd = (fmtBc.lbl_sd || "SITE DOWN :").replace(/:/g, "").trim();
+  const sec_cd = (fmtBc.lbl_cd || "CELLS DOWN :").replace(/:/g, "").trim();
+  const sec_bcch = (fmtBc.lbl_bcch || "CELL DOWN BCCH Missing NOKIA :").trim();
+
+  const toLines = (items) => {
+    return items.map(s => {
+      const isFully = s.is_netdrone || (s.impact && (s.impact.toLowerCase().includes('fully') || s.impact.toLowerCase().includes('sitedown')));
+      const combined = ((s.category || '') + " " + (s.impact || '')).toUpperCase().replace(/[-_\s]+/g, ' ');
+      const isHub = combined.includes('HUB') && (combined.includes('MEDIUM') || combined.includes('BIG'));
+      const isCritical = (s.site_class || '').toUpperCase().includes('CRITICAL');
+      const icon = (isHub || isCritical) ? "⚠️" : (fmtBc.icon_down || "▶️");
+
+      let entryTime = s.start_time || "";
+      if (s.start_timestamp > 0) {
+        const d = new Date(s.start_timestamp * 1000);
+        entryTime = `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${d.getUTCFullYear()} | ${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
+      }
+
+      const ctx = {
+        icon: icon,
+        rts: s.rts || s.pic || "",
+        cluster: s.cluster || "",
+        new: s.new_site || "",
+        sitename: s.site_name || "",
+        old: "", // Python broadcast tab explicitly leaves old empty
+        time: entryTime,
+        remark: s.remark || "",
+        category: s.category || "",
+        type: isFully ? "SITE DOWN" : "CELLS DOWN",
+        pic: s.pic || "",
+        te: s.pic || ""
+      };
+
+      let ln = (fmtBc.msg_line || "{icon} {rts} / {cluster} /  {new}  / {sitename} / {category} / {time}").replace(/\{(\w+)\}/g, (_, k) => ctx[k] || "");
+      if (showRemark && s.remark && !s.is_pivot && (fmtBc.msg_remark || " / {remark}").trim()) {
+        ln += (fmtBc.msg_remark || " / {remark}").replace(/\{(\w+)\}/g, (_, k) => ctx[k] || "");
+      }
+      return ln;
+    }).join("\n");
+  };
 
   const parts = [];
 
@@ -603,9 +854,12 @@ function generateShareWA(statuses) {
       const sysRows = stollenRows.filter(r => r.system === sys);
       if (sysRows.length > 0) {
         parts.push(`*ALARM STOLLEN BATTERY ${sys} : *`);
-        sysRows.forEach(row => {
-          parts.push(formatStollenLine(row));
+        const items = sysRows.map(row => {
+          const item = convertPivotRowToSiteItem(row);
+          item.category = "STOLEN BATTERY";
+          return item;
         });
+        parts.push(toLines(items));
         parts.push("");
       }
     });
@@ -616,54 +870,16 @@ function generateShareWA(statuses) {
       const sysRows = cableStollenRows.filter(r => r.system === sys);
       if (sysRows.length > 0) {
         parts.push(`*INDIKASI CABLE STOLLEN ${sys}*`);
-        sysRows.forEach(row => {
-          parts.push(formatCableStollenLine(row));
+        const items = sysRows.map(row => {
+          const item = convertPivotRowToSiteItem(row);
+          item.category = "STOLEN CABLE";
+          return item;
         });
+        parts.push(toLines(items));
         parts.push("");
       }
     });
   }
-
-  const sec_sd = (fmtBc.lbl_sd || "SITE DOWN :").replace(/:/g, "").trim();
-  const sec_cd = (fmtBc.lbl_cd || "CELLS DOWN :").replace(/:/g, "").trim();
-  const sec_bcch = (fmtBc.lbl_bcch || "CELL DOWN BCCH Missing NOKIA :").trim();
-
-  const toLines = (items) => {
-    return items.map(s => {
-      const isFully = s.impact.toLowerCase().includes('fully');
-      const combined = (s.category + " " + s.impact).toUpperCase().replace(/[-_\s]+/g, ' ');
-      const isHub = combined.includes('HUB') && (combined.includes('MEDIUM') || combined.includes('BIG'));
-      const isCritical = s.site_class.toUpperCase().includes('CRITICAL');
-      const icon = (isHub || isCritical) ? "⚠️" : (fmtBc.icon_down || "▶️");
-
-      let entryTime = s.start_time || "";
-      if (s.start_timestamp > 0) {
-        const d = new Date(s.start_timestamp * 1000);
-        entryTime = `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${d.getUTCFullYear()} | ${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
-      }
-
-      const ctx = {
-        icon: icon,
-        rts: s.rts || "",
-        cluster: s.cluster || "",
-        new: s.new_site || "",
-        sitename: s.site_name || "",
-        old: "", // Python broadcast tab explicitly leaves old empty
-        time: entryTime,
-        remark: s.remark || "",
-        category: s.category || "",
-        type: isFully ? "SITE DOWN" : "CELLS DOWN",
-        pic: s.pic || "",
-        te: s.pic || ""
-      };
-
-      let ln = (fmtBc.msg_line || "{icon} {rts} / {cluster} /  {new}  / {sitename} / {category} / {time}").replace(/\{(\w+)\}/g, (_, k) => ctx[k] || "");
-      if (showRemark && s.remark && (fmtBc.msg_remark || " / {remark}").trim()) {
-        ln += (fmtBc.msg_remark || " / {remark}").replace(/\{(\w+)\}/g, (_, k) => ctx[k] || "");
-      }
-      return ln;
-    }).join("\n");
-  };
 
   const ful_hw = ful.filter(e => (e.vendor || "").toUpperCase().includes("HUA"));
   const ful_nok = ful.filter(e => (e.vendor || "").toUpperCase().includes("NOK"));
@@ -674,17 +890,16 @@ function generateShareWA(statuses) {
   if (ful_oth.length > 0) { parts.push(`*${sec_sd}*`); parts.push(toLines(ful_oth)); parts.push(""); }
   if (ful.length === 0) { parts.push(`*${sec_sd}*`); parts.push("- Nihil -"); parts.push(""); }
 
-  // 2. Append Enva Alarms below Site Down
+  // 2. Append Enva Alarms below Site Down formatted identically using toLines
   if (typeof pivotData !== 'undefined' && pivotData.length > 0) {
-    const envaRows = pivotData.filter(r => r.monitoring === 'POWER NOW' || r.monitoring.includes('POWER') || r.monitoring.includes('ENVA'));
+    const envaRows = pivotData.filter(r => r.monitoring === 'POWER NOW' || (r.monitoring || '').includes('POWER') || (r.monitoring || '').includes('ENVA'));
     const envaSystems = [...new Set(envaRows.map(r => r.system))];
     envaSystems.forEach(sys => {
       const sysRows = envaRows.filter(r => r.system === sys);
       if (sysRows.length > 0) {
         parts.push(`*ENVA POWER ${sys} : : ${sysRows.length}*`);
-        sysRows.forEach(row => {
-          parts.push(formatEnvaLine(row));
-        });
+        const items = sysRows.map(row => convertPivotRowToSiteItem(row));
+        parts.push(toLines(items));
         parts.push("");
       }
     });
@@ -809,19 +1024,56 @@ if (btnWaSend) {
     btnWaSend.disabled = true;
     btnWaSend.textContent = "MENGIRIM...";
 
+    const progressContainer = document.getElementById('wa-bc-progress-container');
+    const progressStatus = document.getElementById('wa-bc-progress-status');
+    const progressPercent = document.getElementById('wa-bc-progress-percent');
+    const progressFill = document.getElementById('wa-bc-progress-fill');
+
+    if (progressContainer) progressContainer.style.display = 'block';
+
+    let totalSuccess = 0;
+    let totalFailed = 0;
+
     try {
-      const targets = selected.map(g => ({ group_id: g.group_id, message: waText }));
-      const result = await invoke('wa_broadcast', { targets, delay_ms: 1500 });
+      for (let i = 0; i < selected.length; i++) {
+        const g = selected[i];
+        const pct = Math.round(((i + 1) / selected.length) * 100);
+        if (progressStatus) progressStatus.textContent = `⏳ Mengirim (${i + 1}/${selected.length}): ${g.group_name}`;
+        if (progressPercent) progressPercent.textContent = `${pct}%`;
+        if (progressFill) progressFill.style.width = `${pct}%`;
 
-      const success = result.success || 0;
-      const total = result.total || 0;
-      const failed = result.failed || 0;
+        try {
+          const res = await invoke('wa_broadcast', {
+            targets: [{ group_id: g.group_id, message: waText }],
+            delay_ms: 1500
+          });
+          totalSuccess += (res.success || 0);
+          totalFailed += (res.failed || 0);
+        } catch (e) {
+          totalFailed++;
+          console.error(`Gagal mengirim ke ${g.group_name}:`, e);
+        }
 
-      alert(`Broadcast selesai: ${success}/${total} berhasil${failed > 0 ? `, ${failed} gagal` : ""}`);
+        if (i < selected.length - 1) {
+          await new Promise(r => setTimeout(r, 1000));
+        }
+      }
+
+      if (progressStatus) progressStatus.textContent = `✅ Broadcast Selesai: ${totalSuccess}/${selected.length} berhasil!`;
+      if (progressPercent) progressPercent.textContent = `100%`;
+      if (progressFill) {
+        progressFill.style.width = `100%`;
+        progressFill.style.background = `var(--grn)`;
+      }
 
       // Add to logs
       const groupsArr = selected.map(g => g.group_name);
-      addBroadcastLog(success, total, groupsArr);
+      addBroadcastLog(totalSuccess, selected.length, groupsArr);
+
+      setTimeout(() => {
+        if (progressContainer) progressContainer.style.display = 'none';
+        if (progressFill) progressFill.style.background = 'var(--accent-lit)';
+      }, 5000);
 
     } catch (err) {
       alert("Error Broadcast: " + err);
@@ -1130,12 +1382,14 @@ const defaultFmt = {
 // WA Management Logic
 let waGroups = [];
 let savedWaGroups = [];
+let selectedGroupIds = new Set();
 let broadcastLogs = [];
 
 async function loadWaConfig() {
   try {
     const cfg = await invoke('get_wa_config');
     savedWaGroups = cfg.saved_groups || [];
+    selectedGroupIds = new Set(savedWaGroups.map(g => g.group_id));
   } catch (e) {
     console.warn("WA Config not loaded", e);
   }
@@ -1143,15 +1397,14 @@ async function loadWaConfig() {
 
 function renderWaGroups(filter = "") {
   const tbody = document.getElementById('wa-groups-tbody');
+  if (!tbody) return;
   tbody.innerHTML = '';
-
-  const savedIds = new Set(savedWaGroups.map(g => g.group_id));
 
   let visible = 0;
   waGroups.filter(g => !filter || g.name.toLowerCase().includes(filter.toLowerCase())).forEach(g => {
     visible++;
     const tr = document.createElement('tr');
-    const isChecked = savedIds.has(g.id);
+    const isChecked = selectedGroupIds.has(g.id);
 
     tr.innerHTML = `
       <td class="text-center" style="width: 50px;">
@@ -1160,28 +1413,41 @@ function renderWaGroups(filter = "") {
       <td class="${isChecked ? 'text-success' : 'text-subtle'} font-bold">${g.name}</td>
     `;
 
+    const chk = tr.querySelector('input');
+    const toggleCheck = (checked) => {
+      chk.checked = checked;
+      const td = tr.querySelector('td:nth-child(2)');
+      if (checked) {
+        selectedGroupIds.add(g.id);
+        td.classList.replace('text-subtle', 'text-success');
+      } else {
+        selectedGroupIds.delete(g.id);
+        td.classList.replace('text-success', 'text-subtle');
+      }
+      updateWaSearchCount(visible, filter);
+    };
+
     tr.addEventListener('click', (e) => {
       if (e.target.tagName !== 'INPUT') {
-        const chk = tr.querySelector('input');
-        chk.checked = !chk.checked;
-        const event = new Event('change');
-        chk.dispatchEvent(event);
+        toggleCheck(!chk.checked);
       }
     });
 
-    tr.querySelector('input').addEventListener('change', (e) => {
-      const td = tr.querySelector('td:nth-child(2)');
-      if (e.target.checked) {
-        td.classList.replace('text-subtle', 'text-success');
-      } else {
-        td.classList.replace('text-success', 'text-subtle');
-      }
+    chk.addEventListener('change', (e) => {
+      toggleCheck(e.target.checked);
     });
 
     tbody.appendChild(tr);
   });
 
-  document.getElementById('wa-search-count').textContent = filter ? `${visible}/${waGroups.length} grup` : "";
+  updateWaSearchCount(visible, filter);
+}
+
+function updateWaSearchCount(visibleCount = 0, filter = "") {
+  const countEl = document.getElementById('wa-search-count');
+  if (!countEl) return;
+  const selCount = selectedGroupIds.size;
+  countEl.textContent = filter ? `${visibleCount}/${waGroups.length} (${selCount} terpilih)` : `${selCount} terpilih`;
 }
 
 document.getElementById('btn-wa-refresh-groups').addEventListener('click', async () => {
@@ -1192,6 +1458,7 @@ document.getElementById('btn-wa-refresh-groups').addEventListener('click', async
 
     const status = await invoke('wa_groups');
     waGroups = status.groups || [];
+    selectedGroupIds = new Set(savedWaGroups.map(g => g.group_id));
     renderWaGroups(document.getElementById('wa-group-search').value);
 
     btn.textContent = oldT;
@@ -1211,15 +1478,17 @@ document.getElementById('btn-wa-clear-search').addEventListener('click', () => {
 });
 
 document.getElementById('btn-wa-save-groups').addEventListener('click', async () => {
-  const chks = document.querySelectorAll('.wa-grp-chk:checked');
-  const toSave = Array.from(chks).map(c => ({
-    group_id: c.dataset.id,
-    group_name: c.dataset.name
-  }));
+  const toSave = waGroups
+    .filter(g => selectedGroupIds.has(g.id))
+    .map(g => ({
+      group_id: g.id,
+      group_name: g.name
+    }));
 
   try {
     await invoke('save_wa_groups', { savedGroups: toSave });
-    savedWaGroups = toSave; renderWaTargets();
+    savedWaGroups = toSave;
+    renderWaTargets();
     const lbl = document.getElementById('wa-groups-status');
     lbl.textContent = `✅ ${toSave.length} grup disimpan`;
     setTimeout(() => lbl.textContent = '', 3000);
@@ -1477,7 +1746,7 @@ try {
     if (parsed.lblCd && !parsed.lbl_cd) parsed.lbl_cd = parsed.lblCd;
     if (parsed.lblBcch && !parsed.lbl_bcch) parsed.lbl_bcch = parsed.lblBcch;
     if (parsed.keyBcch && !parsed.key_bcch) parsed.key_bcch = parsed.keyBcch;
-    
+
     fmtMsg = Object.assign({}, defaultFmtMsg, parsed);
   }
 } catch (e) {
@@ -1573,7 +1842,7 @@ document.getElementById('btn-fmt-reset')?.addEventListener('click', () => {
 });
 
 function formatSingleLine(s, fmtObj, showRemarkOverride) {
-  const isFully = s.impact.toLowerCase().includes('fully');
+  const isFully = s.is_netdrone || (s.impact && (s.impact.toLowerCase().includes('fully') || s.impact.toLowerCase().includes('sitedown')));
   const typeRaw = isFully ? "SITE DOWN" : "CELLS DOWN";
   const combined = (s.category + " " + s.impact).toUpperCase().replace(/[-_\s]+/g, ' ');
   const isHub = combined.includes('HUB') && (combined.includes('MEDIUM') || combined.includes('BIG'));
@@ -1668,31 +1937,61 @@ function processPMData() {
   const remFilter = document.getElementById('pm-f-rem').value.toLowerCase();
 
   let downSites = statusData.filter(s => s.status === 'DOWN');
+
+  if (typeof netdroneData !== 'undefined' && netdroneData && netdroneData.length > 0) {
+    netdroneData.filter(d => !d.skipped && d.matchedDb).forEach(nr => {
+      const siteObj = {
+        status: 'DOWN',
+        impact: 'Full Sitedown',
+        new_site: nr.siteId,
+        old_site: "",
+        site_name: nr.siteName,
+        cluster: nr.cluster || 'UNKNOWN',
+        pic: nr.pic || "",
+        rts: nr.rts || "",
+        start_time: nr.startTime || "",
+        agging: "",
+        remark: nr.remark || "",
+        category: nr.category || "",
+        site_class: nr.siteClass || "",
+        vendor: nr.vendor || "",
+        te_phone: nr.tePhone || "",
+        is_netdrone: true
+      };
+      if (typeof activeRegionFilter === 'undefined' || activeRegionFilter === 'ALL' || getSiteRegion(siteObj) === activeRegionFilter) {
+        downSites.push(siteObj);
+      }
+    });
+  }
+
   let rawMap = {};
 
   if (pmMode === 'cluster') {
     downSites.forEach(s => {
-      // Group by Cluster AND TE Name (pic) to match Python parity
-      const cluster = s.cluster || 'UNKNOWN';
-      const pic = s.pic || "";
-      const key = `${cluster}|${pic}`;
+      const pic = s.pic || s.te_name || "TE UNKNOWN";
+      const key = pic;
 
       if (!rawMap[key]) {
         rawMap[key] = {
-          cluster: cluster,
           pic: pic,
           te: pic,
           rts: s.rts || "",
+          clusters: new Set(),
           entries: []
         };
       }
 
+      if (s.cluster) rawMap[key].clusters.add(s.cluster);
       const fmt = formatSingleLine(s, fmtMsg, pmShowRemark);
       rawMap[key].entries.push({ ...s, ...fmt });
 
-      // Update RTS if the group RTS is empty but a site has one
       if (!rawMap[key].rts && s.rts) rawMap[key].rts = s.rts;
     });
+
+    for (let k in rawMap) {
+      const sortedCls = Array.from(rawMap[k].clusters).filter(Boolean).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+      rawMap[k].cluster = sortedCls.join(", ") || "UNKNOWN";
+    }
   } else {
     downSites.forEach(s => {
       const rts = s.rts || "(Tanpa RTS)";
@@ -2646,22 +2945,6 @@ function calculatePivotAging(dateStr) {
   return "> 24 Hours";
 }
 
-function formatStollenLine(row) {
-  const formattedDate = formatPivotDate(row.tanggal);
-  return `❗ / ${row.rtsName || row.teName || row.newTe || "0"} / ${row.cluster} / ${row.newId} / ${row.siteName} / ${row.category} / ${formattedDate} /`;
-}
-
-function formatCableStollenLine(row) {
-  const formattedDate = formatPivotDate(row.tanggal);
-  return `▶️ / ${row.rtsName || row.teName || row.newTe || "0"} / ${row.cluster} / ${row.newId} / ${row.siteName} / ${row.category} / ${formattedDate} /`;
-}
-
-function formatEnvaLine(row) {
-  const formattedDate = formatPivotDate(row.tanggal);
-  const agingStr = calculatePivotAging(row.tanggal);
-  return `▶️ / ${row.teName || row.newTe || "0"} / ${row.cluster} / ${row.newId} / ${row.siteName} / ${row.category} / ${formattedDate} / ${agingStr} |`;
-}
-
 function parsePivotData(text) {
   const lines = text.split('\n');
   const rows = [];
@@ -2711,23 +2994,32 @@ function parsePivotData(text) {
 
     if (parts.length < 2) continue;
 
+    let rawId = parts[colIndices.newId] || "";
     const label = parts[colIndices.rowLabels] || "";
+    const siteName = parts[colIndices.siteName] || "";
     const monitoring = parts[colIndices.monitoring] || "";
     const systemVal = parts[colIndices.system] || "";
 
     if (monitoring.toUpperCase() === 'GRAND TOTAL' || label.toUpperCase() === 'GRAND TOTAL') continue;
 
-    const newId = parts[colIndices.newId] || "";
+    // Extract real Site ID (e.g. 14KDS0085 or 14SMG0156)
+    const siteIdPattern = /([0-9]{2}[A-Z]{3}[0-9]{4})/i;
+    let siteIdMatch = line.match(siteIdPattern) || rawId.match(siteIdPattern) || siteName.match(siteIdPattern) || label.match(siteIdPattern);
+    const newId = siteIdMatch ? siteIdMatch[1].toUpperCase() : "";
 
-    if (!newId || newId === '0' || newId === '') {
-      if (systemVal && systemVal !== '0') {
+    if (!newId) {
+      if (systemVal && systemVal !== '0' && isNaN(systemVal)) {
         currentSystem = systemVal.toUpperCase();
       }
       continue;
     }
 
+    let cleanSiteName = siteName;
+    if (cleanSiteName && newId && cleanSiteName.toUpperCase().startsWith(newId + "_")) {
+      cleanSiteName = cleanSiteName.substring(newId.length + 1);
+    }
+
     const cluster = parts[colIndices.cluster] || "";
-    const siteName = parts[colIndices.siteName] || "";
     const tanggal = parts[colIndices.tanggal] || "";
     const category = parts[colIndices.category] || "";
     const newTe = parts[colIndices.newTe] || "";
@@ -2737,7 +3029,7 @@ function parsePivotData(text) {
       system: currentSystem || systemVal.toUpperCase() || "HUAWEI",
       cluster,
       newId,
-      siteName,
+      siteName: cleanSiteName || siteName || newId,
       tanggal,
       category,
       newTe
@@ -2784,24 +3076,62 @@ async function handleProcessPivot() {
   if (statusBar) statusBar.textContent = "Sedang memproses & mencocokkan data pivot...";
 
   for (let row of rawRows) {
-    if (invoke) {
+    let dbInfo = null;
+    if (invoke && row.newId) {
       try {
-        const dbInfo = await invoke('lookup_site', { siteId: row.newId });
-        if (dbInfo && dbInfo['TE Name']) {
-          row.teName = dbInfo['TE Name'];
-        } else {
-          row.teName = row.newTe;
-        }
-        if (dbInfo && dbInfo['RTS Name']) {
-          row.rtsName = dbInfo['RTS Name'];
-        }
+        dbInfo = await invoke('lookup_site', { siteId: row.newId });
       } catch (err) {
         console.error("DB lookup failed for", row.newId, err);
-        row.teName = row.newTe;
       }
-    } else {
-      row.teName = row.newTe;
     }
+
+    const matchedMaster = (typeof statusData !== 'undefined' && statusData) ? statusData.find(s => s.new_site && s.new_site.toUpperCase() === (row.newId || "").toUpperCase()) : null;
+
+    // 1. RTS Name / TE Name
+    let rtsName = (dbInfo && (dbInfo['RTS Name'] || dbInfo['TE Name'])) || (matchedMaster && (matchedMaster.rts || matchedMaster.pic)) || row.newTe || "—";
+    let teName = (dbInfo && dbInfo['TE Name']) || (matchedMaster && matchedMaster.pic) || row.newTe || "—";
+
+    row.rtsName = rtsName;
+    row.teName = teName;
+
+    // 2. FM Office priority (MUST NOT be RTS Name or TE Name)
+    let fmOffice = (dbInfo && dbInfo['FM Office']) ||
+                   (matchedMaster && matchedMaster.cluster) ||
+                   row.cluster || "—";
+
+    if (fmOffice && fmOffice.toUpperCase().startsWith("MC-")) {
+      fmOffice = fmOffice.substring(3).trim();
+    }
+
+    if (!fmOffice || fmOffice === "—" || fmOffice === "0" || fmOffice.toUpperCase() === rtsName.toUpperCase() || fmOffice.toUpperCase() === teName.toUpperCase()) {
+      fmOffice = (dbInfo && dbInfo['Cluster (MC)']) || (matchedMaster && matchedMaster.cluster) || row.cluster || "—";
+      if (fmOffice && fmOffice.toUpperCase().startsWith("MC-")) {
+        fmOffice = fmOffice.substring(3).trim();
+      }
+    }
+
+    row.fmOffice = fmOffice;
+    row.cluster = fmOffice; // Replace cluster with clean FM Office
+
+    // 3. Site Class priority (END SITE, SMALL HUB SITE, MEDIUM HUB SITE, BIG HUB SITE)
+    let sClass = (matchedMaster && matchedMaster.site_class && !matchedMaster.site_class.toUpperCase().includes('CRITICAL') ? matchedMaster.site_class : "") ||
+                 (dbInfo && dbInfo['Hub Type']) ||
+                 (dbInfo && dbInfo['Site Class'] && !dbInfo['Site Class'].toUpperCase().includes('CRITICAL') ? dbInfo['Site Class'] : "") || "";
+
+    if (!sClass || sClass === "A" || sClass === "B" || sClass === "C" || sClass.length <= 2 || sClass.toUpperCase().includes('CRITICAL')) {
+      if (matchedMaster && matchedMaster.site_class && !matchedMaster.site_class.toUpperCase().includes('CRITICAL')) {
+        sClass = matchedMaster.site_class;
+      } else if (matchedMaster && matchedMaster.category && !matchedMaster.category.toUpperCase().includes('CRITICAL')) {
+        sClass = matchedMaster.category;
+      } else {
+        sClass = "END SITE";
+      }
+    }
+
+    row.siteClass = sClass;
+
+    if (dbInfo && dbInfo['Site Name']) row.siteName = dbInfo['Site Name'];
+    else if (matchedMaster && matchedMaster.site_name) row.siteName = matchedMaster.site_name;
   }
 
   pivotData = rawRows;
@@ -2844,10 +3174,289 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  const btnClearNetdrone = document.getElementById('btn-clear-netdrone');
+  if (btnClearNetdrone) {
+    btnClearNetdrone.addEventListener('click', () => {
+      const txtNetdrone = document.getElementById('txt-netdrone');
+      if (txtNetdrone) txtNetdrone.value = '';
+      netdroneData = [];
+      localStorage.removeItem('cjhelper_netdrone_data');
+      localStorage.removeItem('cjhelper_netdrone_text');
+      renderNetdroneTable();
+      if (typeof updateFilterCountsInUI === 'function') updateFilterCountsInUI();
+    });
+  }
+
   renderPivotTable();
+  renderNetdroneTable();
 });
 
 renderPivotTable();
+renderNetdroneTable();
+
+// --- DATA NETDRONE FEATURE ---
+
+// Load persisted Netdrone data
+try {
+  const savedNetdrone = localStorage.getItem('cjhelper_netdrone_data');
+  const savedNetdroneText = localStorage.getItem('cjhelper_netdrone_text');
+  if (savedNetdrone) {
+    netdroneData = JSON.parse(savedNetdrone);
+  }
+  if (savedNetdroneText && document.getElementById('txt-netdrone')) {
+    document.getElementById('txt-netdrone').value = savedNetdroneText;
+  }
+} catch (e) {
+  console.error("Gagal memuat netdroneData dari localStorage", e);
+}
+
+async function parseNetdroneData(text) {
+  if (!text || !text.trim()) return [];
+  const lines = text.trim().split('\n');
+  if (lines.length === 0) return [];
+
+  let headerIndex = 0;
+  let headers = [];
+  for (let i = 0; i < Math.min(lines.length, 5); i++) {
+    const cols = lines[i].split('\t').map(c => c.trim().toLowerCase());
+    if (cols.includes('site_id') || cols.includes('sitecode') || cols.includes('site_name') || cols.includes('alarm_count')) {
+      headerIndex = i;
+      headers = cols;
+      break;
+    }
+  }
+
+  if (headers.length === 0) {
+    headers = lines[0].split('\t').map(c => c.trim().toLowerCase());
+    headerIndex = 0;
+  }
+
+  const getColVal = (cols, keywords) => {
+    for (const kw of keywords) {
+      const idx = headers.indexOf(kw.toLowerCase());
+      if (idx !== -1 && cols[idx] !== undefined) return cols[idx].trim();
+    }
+    return "";
+  };
+
+  const masterSiteIds = new Set();
+  (statusData || []).forEach(s => {
+    if (s.new_site) masterSiteIds.add(s.new_site.trim().toUpperCase());
+    if (s.old_site) masterSiteIds.add(s.old_site.trim().toUpperCase());
+    if (s.site_name) masterSiteIds.add(s.site_name.trim().toUpperCase());
+  });
+
+  const parsedRows = [];
+
+  for (let i = headerIndex + 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    const cols = line.split('\t');
+
+    const rawSiteId = getColVal(cols, ['site_id', 'sitecode', 'site_name']);
+    if (!rawSiteId) continue;
+
+    const siteIdMatch = rawSiteId.match(/([0-9]{2}[A-Z]{3}[0-9]{4})/i);
+    const siteId = siteIdMatch ? siteIdMatch[1].toUpperCase() : rawSiteId.split('_')[0].toUpperCase();
+
+    const siteName = getColVal(cols, ['site_name', 'sitecode', 'title']) || rawSiteId;
+    const vendor = getColVal(cols, ['vendor', 'site_vendor']) || "";
+    const alarmName = getColVal(cols, ['alarm_name', 'title', 'summary']) || "Full Sitedown";
+    const remark = getColVal(cols, ['remark', 'remarks', 'wo_remarks', 'summary']) || "";
+    const startTime = getColVal(cols, ['lastoccurrence', 'firstoccurrence', 'last_occurrence']) || "";
+
+    let isMasterPresent = false;
+    for (let mId of masterSiteIds) {
+      if (mId.includes(siteId) || siteId.includes(mId)) {
+        isMasterPresent = true;
+        break;
+      }
+    }
+
+    if (isMasterPresent) {
+      parsedRows.push({
+        siteId,
+        siteName,
+        vendor,
+        alarmName,
+        remark,
+        startTime,
+        cluster: "",
+        pic: "",
+        tePhone: "",
+        category: "",
+        siteClass: "",
+        skipped: true,
+        matchedDb: false,
+        statusMessage: "⚠️ Skipped (Ada di Master)"
+      });
+      continue;
+    }
+
+    let dbRow = null;
+    try {
+      if (invoke) {
+        dbRow = await invoke('lookup_site', { siteId: siteId });
+        if (!dbRow && siteName) {
+          const cleanName = siteName.split('_')[0].trim();
+          if (cleanName && cleanName !== siteId) {
+            dbRow = await invoke('lookup_site', { siteId: cleanName });
+          }
+        }
+      }
+    } catch (e) {
+      console.warn(`Lookup site error for ${siteId}:`, e);
+    }
+
+    const hasDbMatch = dbRow && (
+      dbRow['Site ID (New)'] ||
+      dbRow['Old Site ID'] ||
+      dbRow['Site Name'] ||
+      dbRow['Cluster (MC)'] ||
+      dbRow['Cluster'] ||
+      dbRow['TE Name'] ||
+      dbRow['FE Name'] ||
+      dbRow['FME Name']
+    );
+
+    if (hasDbMatch) {
+      const cluster = dbRow['Cluster (MC)'] || dbRow['Cluster'] || dbRow['CLUSTER'] || getColVal(cols, ['mc_cluster']) || "";
+      const pic = dbRow['TE Name'] || dbRow['FE Name'] || dbRow['FME Name'] || dbRow['FME'] || dbRow['FE'] || getColVal(cols, ['fme_name']) || "";
+      const rts = dbRow['RTS Name'] || dbRow['RTS'] || getColVal(cols, ['rts_name']) || "";
+      const tePhone = dbRow['TE Phone'] || dbRow['FE Phone'] || dbRow['FME Phone'] || getColVal(cols, ['fme_phone']) || "";
+      const category = dbRow['Hub Type'] || dbRow['Category'] || dbRow['CATEGORY'] || getColVal(cols, ['category']) || "";
+      const siteClass = dbRow['Site Class'] || dbRow['Tier'] || getColVal(cols, ['site_class']) || "";
+
+      parsedRows.push({
+        siteId,
+        siteName,
+        vendor: dbRow['Vendor'] || vendor,
+        alarmName: "Full Sitedown",
+        remark,
+        startTime,
+        cluster,
+        pic,
+        rts,
+        tePhone,
+        category,
+        siteClass,
+        skipped: false,
+        matchedDb: true,
+        statusMessage: "✅ Netdrone (Matched DB)"
+      });
+    } else {
+      parsedRows.push({
+        siteId,
+        siteName,
+        vendor,
+        alarmName,
+        remark,
+        startTime,
+        cluster: getColVal(cols, ['mc_cluster']) || "",
+        pic: getColVal(cols, ['fme_name']) || "",
+        rts: getColVal(cols, ['rts_name']) || "",
+        tePhone: getColVal(cols, ['fme_phone']) || "",
+        category: getColVal(cols, ['category']) || "",
+        siteClass: getColVal(cols, ['site_class']) || "",
+        skipped: false,
+        matchedDb: false,
+        statusMessage: "❓ DB Tidak Ditemukan"
+      });
+    }
+  }
+
+  return parsedRows;
+}
+
+function renderNetdroneTable() {
+  const tbody = document.getElementById('netdrone-tbody');
+  const lblSummary = document.getElementById('lbl-netdrone-summary');
+  if (!tbody) return;
+
+  if (!netdroneData || netdroneData.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-subtle" style="padding: 20px;">Belum ada data Netdrone diproses.</td></tr>';
+    if (lblSummary) lblSummary.textContent = '0 data diproses';
+    return;
+  }
+
+  const matchedCount = netdroneData.filter(d => !d.skipped && d.matchedDb).length;
+  const skippedCount = netdroneData.filter(d => d.skipped).length;
+  const notFoundCount = netdroneData.filter(d => !d.skipped && !d.matchedDb).length;
+
+  if (lblSummary) {
+    lblSummary.textContent = `${matchedCount} Matched DB | ${skippedCount} Skipped (Master) | ${notFoundCount} DB Tidak Ditemukan`;
+  }
+
+  const fragment = document.createDocumentFragment();
+  netdroneData.forEach((row, idx) => {
+    const tr = document.createElement('tr');
+    let badgeClass = "bb";
+    if (row.skipped) badgeClass = "ba";
+    else if (row.matchedDb) badgeClass = "br";
+
+    tr.innerHTML = `
+      <td>${idx + 1}</td>
+      <td><strong>${row.siteId}</strong></td>
+      <td>${row.siteName}</td>
+      <td>${row.vendor || '-'}</td>
+      <td>${row.alarmName || '-'}</td>
+      <td>${row.cluster || '-'}</td>
+      <td>${row.pic || '-'}</td>
+      <td><span class="badge ${badgeClass}">${row.statusMessage}</span></td>
+    `;
+    fragment.appendChild(tr);
+  });
+
+  tbody.innerHTML = '';
+  tbody.appendChild(fragment);
+}
+
+// Netdrone event listeners setup
+document.addEventListener('DOMContentLoaded', () => {
+  const txtNetdrone = document.getElementById('txt-netdrone');
+  const btnProcessNetdrone = document.getElementById('btn-process-netdrone');
+
+  if (txtNetdrone && btnProcessNetdrone) {
+    txtNetdrone.addEventListener('input', () => {
+      const val = txtNetdrone.value.trim();
+      if (val) {
+        const lineCount = val.split('\n').filter(l => l.trim()).length;
+        btnProcessNetdrone.disabled = false;
+        btnProcessNetdrone.style.opacity = '1';
+        btnProcessNetdrone.style.cursor = 'pointer';
+        btnProcessNetdrone.textContent = `▶ PROSES NETDRONE (${lineCount} baris)`;
+      } else {
+        btnProcessNetdrone.disabled = true;
+        btnProcessNetdrone.style.opacity = '0.5';
+        btnProcessNetdrone.style.cursor = 'not-allowed';
+        btnProcessNetdrone.textContent = '▶ PROSES NETDRONE (Kosong)';
+      }
+    });
+
+    btnProcessNetdrone.addEventListener('click', async () => {
+      const text = txtNetdrone.value.trim();
+      if (!text) return;
+
+      btnProcessNetdrone.disabled = true;
+      btnProcessNetdrone.textContent = '⏳ Memproses & mencocokkan DB...';
+
+      try {
+        netdroneData = await parseNetdroneData(text);
+        localStorage.setItem('cjhelper_netdrone_data', JSON.stringify(netdroneData));
+        localStorage.setItem('cjhelper_netdrone_text', text);
+
+        renderNetdroneTable();
+        if (typeof updateFilterCountsInUI === 'function') updateFilterCountsInUI();
+      } catch (e) {
+        console.error("Error memproses Data Netdrone: ", e);
+      } finally {
+        const lineCount = text.split('\n').filter(l => l.trim()).length;
+        btnProcessNetdrone.disabled = false;
+        btnProcessNetdrone.textContent = `▶ PROSES NETDRONE (${lineCount} baris)`;
+      }
+    });
+  }
+});
 
 // ==========================================
 // WA BLAST JAPRI TE LOGIC & CONTACTS DB
@@ -2864,6 +3473,19 @@ const waBlastTeProgressStatus = document.getElementById('wa-blast-te-progress-st
 const waBlastTeProgressPercent = document.getElementById('wa-blast-te-progress-percent');
 const waBlastTeProgressFill = document.getElementById('wa-blast-te-progress-fill');
 
+// WA Blast Filter Modal Elements
+const btnPmBlastFilter = document.getElementById('btn-pm-blast-filter');
+const waBlastFilterModal = document.getElementById('wa-blast-filter-modal');
+const btnCloseWaBlastFilter = document.getElementById('btn-close-wa-blast-filter');
+const btnSaveWaBlastFilter = document.getElementById('btn-save-wa-blast-filter');
+
+const chkFilterRemarkTrigger = document.getElementById('chk-filter-remark-trigger');
+const chkFilterSitedown = document.getElementById('chk-filter-sitedown');
+const chkFilterCelldown = document.getElementById('chk-filter-celldown');
+const chkFilterBcch = document.getElementById('chk-filter-bcch');
+const chkFilterEnva = document.getElementById('chk-filter-enva');
+const chkFilterStolen = document.getElementById('chk-filter-stolen');
+
 // TE Contacts sub-tab elements
 const waTeTbody = document.getElementById('wa-te-tbody');
 const waTeSearch = document.getElementById('wa-te-search');
@@ -2875,6 +3497,32 @@ const waTeStatusLbl = document.getElementById('wa-te-status-lbl');
 
 let currentTeGroups = {};
 let savedWaTeContacts = [];
+
+// WA Blast Filter Configuration State (Persisted in localStorage)
+const defaultBlastFilterCfg = {
+  filterRemarkTrigger: true, // Default ON (hanya remark fu team, follow up team, plan ts today, atau kosong)
+  enableSitedown: true,      // Default ON
+  enableCelldown: true,      // Default ON
+  enableBcch: true,          // Default ON
+  enableEnva: false,         // Default OFF per user request
+  enableStolen: false,       // Default OFF per user request
+  enableNetdrone: true       // Default ON for WA Blast per user request
+};
+
+let blastFilterCfg = { ...defaultBlastFilterCfg };
+
+try {
+  const savedFilter = localStorage.getItem('cjhelper_blast_filter_cfg');
+  if (savedFilter) {
+    blastFilterCfg = Object.assign({}, defaultBlastFilterCfg, JSON.parse(savedFilter));
+  }
+} catch (e) {
+  console.warn("Gagal memuat blastFilterCfg dari localStorage", e);
+}
+
+function saveBlastFilterCfg() {
+  localStorage.setItem('cjhelper_blast_filter_cfg', JSON.stringify(blastFilterCfg));
+}
 
 function cleanWaNumber(num) {
   if (!num) return "";
@@ -2889,14 +3537,38 @@ function cleanWaNumber(num) {
 }
 
 function shouldSendToTe(remark) {
+  if (!blastFilterCfg.filterRemarkTrigger) {
+    return true; // Jika filter remark di-OFF-kan, kirim semua tanpa mengecek kata kunci
+  }
   const rem = (remark || "").trim();
   if (!rem) return true; // kosong → kirim
-  
+
   const keywords = ["fu team", "follow up team", "plan ts today"];
   const remLower = rem.toLowerCase();
-  
+
   // Hanya kirim jika remark persis sama dengan salah satu keyword
   return keywords.some(kw => remLower === kw);
+}
+
+let siteSelectionMap = {}; // Tracks per-site selection: "siteKey" -> boolean
+
+function getSiteKey(s) {
+  const isFully = s.impact && s.impact.toLowerCase().includes('fully');
+  const bcchKw = (fmtMsg && fmtMsg.key_bcch || "BCCH").toUpperCase();
+  const isBcch = s.remark && s.remark.toUpperCase().includes(bcchKw);
+  let type = "CELLDOWN";
+  if (isFully) type = "SITEDOWN";
+  else if (isBcch) type = "BCCH";
+  return `${s.new_site || s.site_name}_${type}`;
+}
+
+function isSiteSelected(s) {
+  const key = getSiteKey(s);
+  if (siteSelectionMap.hasOwnProperty(key)) {
+    return siteSelectionMap[key];
+  }
+  if (s.is_netdrone) return true; // Netdrone matched DB sites are ALWAYS enabled for Japri TE blast!
+  return shouldSendToTe(s.remark);
 }
 
 function getTeMessageItemCount(sites, cluster) {
@@ -2906,26 +3578,100 @@ function getTeMessageItemCount(sites, cluster) {
   const celldownBcchFiltered = [];
 
   sites.forEach(s => {
-    const isFully = s.impact && s.impact.toLowerCase().includes('fully');
-    const isBcch = s.remark && s.remark.toUpperCase().includes(bcchKw);
+    const isFully = s.is_netdrone || (s.impact && (s.impact.toLowerCase().includes('fully') || s.impact.toLowerCase().includes('sitedown')));
+    const isBcch = !s.is_netdrone && s.remark && s.remark.toUpperCase().includes(bcchKw);
     if (isFully) {
-      if (shouldSendToTe(s.remark)) sitedownFiltered.push(s);
+      if (blastFilterCfg.enableSitedown && isSiteSelected(s)) sitedownFiltered.push(s);
     } else if (isBcch) {
-      celldownBcchFiltered.push(s);
+      if (blastFilterCfg.enableBcch && isSiteSelected(s)) celldownBcchFiltered.push(s);
     } else {
-      if (shouldSendToTe(s.remark)) celldownFiltered.push(s);
+      if (blastFilterCfg.enableCelldown && isSiteSelected(s)) celldownFiltered.push(s);
     }
   });
 
   const clusterUpper = (cluster || "").toUpperCase();
-  const stollenRows = (pivotData || []).filter(r => r.monitoring === 'STOLLEN' && r.cluster && r.cluster.toUpperCase() === clusterUpper);
-  const cableStollenRows = (pivotData || []).filter(r => r.monitoring === 'CABLE STOLLEN' && r.cluster && r.cluster.toUpperCase() === clusterUpper);
-  const envaAlarmRows = (pivotData || []).filter(r => (r.monitoring.includes('POWER') || r.monitoring.includes('ENVA')) && !r.monitoring.includes('NETECO') && r.cluster && r.cluster.toUpperCase() === clusterUpper);
-  const envaNetecoRows = (pivotData || []).filter(r => r.monitoring.includes('NETECO') && r.cluster && r.cluster.toUpperCase() === clusterUpper);
+  const stollenRows = blastFilterCfg.enableStolen ? (pivotData || []).filter(r => (r.monitoring === 'STOLLEN' || r.monitoring === 'CABLE STOLLEN') && r.cluster && r.cluster.toUpperCase() === clusterUpper) : [];
+  const envaAlarmRows = blastFilterCfg.enableEnva ? (pivotData || []).filter(r => (r.monitoring.includes('POWER') || r.monitoring.includes('ENVA')) && !r.monitoring.includes('NETECO') && r.cluster && r.cluster.toUpperCase() === clusterUpper) : [];
+  const envaNetecoRows = blastFilterCfg.enableEnva ? (pivotData || []).filter(r => r.monitoring.includes('NETECO') && r.cluster && r.cluster.toUpperCase() === clusterUpper) : [];
 
   return {
-    total: sitedownFiltered.length + celldownFiltered.length + celldownBcchFiltered.length + stollenRows.length + cableStollenRows.length + envaAlarmRows.length + envaNetecoRows.length
+    total: sitedownFiltered.length + celldownFiltered.length + celldownBcchFiltered.length + stollenRows.length + envaAlarmRows.length + envaNetecoRows.length
   };
+}
+
+function convertPivotRowToSiteItem(row) {
+  let realSiteId = row.newId || "";
+  let realSiteName = row.siteName || "";
+
+  const siteIdPattern = /([0-9]{2}[A-Z]{3}[0-9]{4})/i;
+  let match = (row.siteName || "").match(siteIdPattern) || (row.newId || "").match(siteIdPattern) || (row.rowLabels || "").match(siteIdPattern);
+  if (match) {
+    realSiteId = match[1].toUpperCase();
+  }
+
+  if (realSiteName && realSiteId && realSiteName.toUpperCase().startsWith(realSiteId + "_")) {
+    realSiteName = realSiteName.substring(realSiteId.length + 1);
+  }
+
+  const matchedMaster = (typeof statusData !== 'undefined' && statusData) ? statusData.find(s => s.new_site && s.new_site.toUpperCase() === realSiteId.toUpperCase()) : null;
+
+  let rtsVal = row.rtsName || (matchedMaster && matchedMaster.rts) || row.rts || row.teName || row.newTe || "—";
+  let picVal = row.teName || (matchedMaster && matchedMaster.pic) || row.newTe || "—";
+
+  let fmOffice = row.fmOffice || (matchedMaster && matchedMaster.cluster) || row.cluster || "—";
+  if (fmOffice && fmOffice.toUpperCase().startsWith("MC-")) {
+    fmOffice = fmOffice.substring(3).trim();
+  }
+
+  if (!fmOffice || fmOffice === "—" || fmOffice === "0" || fmOffice.toUpperCase() === rtsVal.toUpperCase() || fmOffice.toUpperCase() === picVal.toUpperCase()) {
+    fmOffice = (matchedMaster && matchedMaster.cluster) || row.cluster || "—";
+    if (fmOffice && fmOffice.toUpperCase().startsWith("MC-")) {
+      fmOffice = fmOffice.substring(3).trim();
+    }
+  }
+
+  let resolvedClass = (matchedMaster && matchedMaster.site_class && !matchedMaster.site_class.toUpperCase().includes('CRITICAL') ? matchedMaster.site_class : "") ||
+                      (row.siteClass && !row.siteClass.toUpperCase().includes('CRITICAL') ? row.siteClass : "") ||
+                      (matchedMaster && matchedMaster.category && !matchedMaster.category.toUpperCase().includes('CRITICAL') ? matchedMaster.category : "") || "";
+
+  if (!resolvedClass || resolvedClass === "A" || resolvedClass === "B" || resolvedClass === "C" || resolvedClass.length <= 2 || resolvedClass.toUpperCase().includes('CRITICAL')) {
+    resolvedClass = "END SITE";
+  }
+
+  return {
+    impact: 'Full Sitedown',
+    status: 'DOWN',
+    cluster: fmOffice,
+    site_name: realSiteName || row.siteName || realSiteId || "—",
+    old_site: "",
+    new_site: realSiteId || "—",
+    start_time: row.tanggal || row.start_time || "—",
+    start_timestamp: 0,
+    remark: row.remark || row.duration || row.aging || row.monitoring || "",
+    category: resolvedClass,
+    site_class: resolvedClass,
+    rts: rtsVal,
+    pic: picVal,
+    vendor: row.system || "HUAWEI",
+    is_pivot: true
+  };
+}
+
+function formatStollenLine(row, fmtObj) {
+  const item = convertPivotRowToSiteItem(row);
+  item.category = "STOLEN BATTERY";
+  return formatSingleLine(item, fmtObj || getActiveFmt()).waLine;
+}
+
+function formatCableStollenLine(row, fmtObj) {
+  const item = convertPivotRowToSiteItem(row);
+  item.category = "STOLEN CABLE";
+  return formatSingleLine(item, fmtObj || getActiveFmt()).waLine;
+}
+
+function formatEnvaLine(row, fmtObj) {
+  const item = convertPivotRowToSiteItem(row);
+  return formatSingleLine(item, fmtObj || getActiveFmt()).waLine;
 }
 
 function generateTeMessage(teName, sites, cluster) {
@@ -2935,28 +3681,24 @@ function generateTeMessage(teName, sites, cluster) {
   const celldownBcchFiltered = [];
 
   sites.forEach(s => {
-    const isFully = s.impact && s.impact.toLowerCase().includes('fully');
-    const isBcch = s.remark && s.remark.toUpperCase().includes(bcchKw);
+    const isFully = s.is_netdrone || (s.impact && (s.impact.toLowerCase().includes('fully') || s.impact.toLowerCase().includes('sitedown')));
+    const isBcch = !s.is_netdrone && s.remark && s.remark.toUpperCase().includes(bcchKw);
     if (isFully) {
-      if (shouldSendToTe(s.remark)) sitedownFiltered.push(s);
+      if (blastFilterCfg.enableSitedown && isSiteSelected(s)) sitedownFiltered.push(s);
     } else if (isBcch) {
-      celldownBcchFiltered.push(s);
+      if (blastFilterCfg.enableBcch && isSiteSelected(s)) celldownBcchFiltered.push(s);
     } else {
-      if (shouldSendToTe(s.remark)) celldownFiltered.push(s);
+      if (blastFilterCfg.enableCelldown && isSiteSelected(s)) celldownFiltered.push(s);
     }
   });
 
   const clusterUpper = (cluster || "").toUpperCase();
-  const stollenRows = (pivotData || []).filter(r => r.monitoring === 'STOLLEN' && r.cluster && r.cluster.toUpperCase() === clusterUpper);
-  const cableStollenRows = (pivotData || []).filter(r => r.monitoring === 'CABLE STOLLEN' && r.cluster && r.cluster.toUpperCase() === clusterUpper);
-  const envaAlarmRows = (pivotData || []).filter(r => (r.monitoring.includes('POWER') || r.monitoring.includes('ENVA')) && !r.monitoring.includes('NETECO') && r.cluster && r.cluster.toUpperCase() === clusterUpper);
-  const envaNetecoRows = (pivotData || []).filter(r => r.monitoring.includes('NETECO') && r.cluster && r.cluster.toUpperCase() === clusterUpper);
+  const stollenRows = blastFilterCfg.enableStolen ? (pivotData || []).filter(r => r.monitoring === 'STOLLEN' && r.cluster && r.cluster.toUpperCase() === clusterUpper) : [];
+  const cableStollenRows = blastFilterCfg.enableStolen ? (pivotData || []).filter(r => r.monitoring === 'CABLE STOLLEN' && r.cluster && r.cluster.toUpperCase() === clusterUpper) : [];
+  const envaAlarmRows = blastFilterCfg.enableEnva ? (pivotData || []).filter(r => (r.monitoring.includes('POWER') || r.monitoring.includes('ENVA')) && !r.monitoring.includes('NETECO') && r.cluster && r.cluster.toUpperCase() === clusterUpper) : [];
+  const envaNetecoRows = blastFilterCfg.enableEnva ? (pivotData || []).filter(r => r.monitoring.includes('NETECO') && r.cluster && r.cluster.toUpperCase() === clusterUpper) : [];
 
   const parts = [];
-  parts.push(`*INFO SITE DOWN - TE: ${teName.toUpperCase()}*`);
-  parts.push("");
-  parts.push("Rekan TE yth, mohon bantuannya untuk pengecekan site down berikut:");
-  parts.push("");
 
   if (stollenRows.length > 0) {
     parts.push(`*STOLEN BATTERY :: ${stollenRows.length}*`);
@@ -3000,14 +3742,51 @@ function generateTeMessage(teName, sites, cluster) {
     parts.push("");
   }
 
-  parts.push("Terima kasih atas kerjasamanya.");
   return parts.join("\n").trim();
 }
+
+function updateContactDashboardCards() {
+  const contacts = activeRegionFilter === 'ALL'
+    ? savedWaTeContacts
+    : savedWaTeContacts.filter(c => {
+        return getSiteRegion({ cluster: c.cluster, site_name: '', remark: '', pic: c.name }) === activeRegionFilter;
+      });
+
+  const total = contacts.length;
+  const valid = contacts.filter(c => cleanWaNumber(c.phone)).length;
+  const unset = total - valid;
+  const clusters = new Set(contacts.map(c => (c.cluster || "").trim().toUpperCase()).filter(Boolean)).size;
+
+  const setEl = (id, val) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = val;
+  };
+
+  setEl('dash-contact-total', total);
+  setEl('dash-contact-valid', valid);
+  setEl('dash-contact-unset', unset);
+  setEl('dash-contact-clusters', clusters);
+}
+
+// Bind Region Switcher Events in Dashboard
+document.addEventListener('DOMContentLoaded', () => {
+  const regBtns = document.querySelectorAll('#dash-region-filter .seg-btn');
+  regBtns.forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      regBtns.forEach(b => b.classList.remove('active'));
+      e.currentTarget.classList.add('active');
+      activeRegionFilter = e.currentTarget.dataset.region || 'ALL';
+      checkStatus();
+      updateContactDashboardCards();
+    });
+  });
+});
 
 async function loadWaTeContacts() {
   try {
     const res = await invoke('get_wa_te_contacts');
     savedWaTeContacts = res.contacts || [];
+    updateContactDashboardCards();
   } catch (e) {
     console.warn("Gagal memuat kontak TE:", e);
   }
@@ -3016,18 +3795,18 @@ async function loadWaTeContacts() {
 function renderWaTeContactsTable(filterText = "") {
   if (!waTeTbody) return;
   waTeTbody.innerHTML = '';
-  
+
   const filtered = savedWaTeContacts.filter(c => {
     const term = filterText.toLowerCase().trim();
     if (!term) return true;
     return (c.name || "").toLowerCase().includes(term) || (c.cluster || "").toLowerCase().includes(term);
   });
-  
+
   if (filtered.length === 0) {
     waTeTbody.innerHTML = '<tr><td colspan="4" class="text-center text-subtle py-4">Belum ada kontak disimpan atau pencarian tidak cocok.</td></tr>';
     return;
   }
-  
+
   filtered.forEach((c, idx) => {
     const tr = document.createElement('tr');
     tr.innerHTML = `
@@ -3038,7 +3817,7 @@ function renderWaTeContactsTable(filterText = "") {
         <button class="tbtn-clr btn-wa-te-delete" style="padding:2px 8px; font-size:11px; background:var(--red-d); color:var(--red); border-color:rgba(255,79,94,0.2);">✕ Hapus</button>
       </td>
     `;
-    
+
     // Live update in-memory array on edit
     tr.querySelector('.wa-te-edit-name').addEventListener('input', (e) => {
       c.name = e.target.value.trim();
@@ -3049,7 +3828,7 @@ function renderWaTeContactsTable(filterText = "") {
     tr.querySelector('.wa-te-edit-phone').addEventListener('input', (e) => {
       c.phone = e.target.value.trim();
     });
-    
+
     tr.querySelector('.btn-wa-te-delete').addEventListener('click', () => {
       const actualIdx = savedWaTeContacts.indexOf(c);
       if (actualIdx !== -1) {
@@ -3057,7 +3836,7 @@ function renderWaTeContactsTable(filterText = "") {
         renderWaTeContactsTable(waTeSearch ? waTeSearch.value : "");
       }
     });
-    
+
     waTeTbody.appendChild(tr);
   });
 }
@@ -3092,29 +3871,29 @@ if (btnWaTeAdd) {
     const inpName = document.getElementById('wa-te-input-name');
     const inpCluster = document.getElementById('wa-te-input-cluster');
     const inpPhone = document.getElementById('wa-te-input-phone');
-    
+
     const name = inpName.value.trim();
     const cluster = inpCluster.value.trim();
     const phone = inpPhone.value.trim();
-    
+
     if (!name || !cluster || !phone) {
       alert("Harap isi semua kolom Tambah Kontak!");
       return;
     }
-    
-    const exists = savedWaTeContacts.some(c => 
-      c.name.trim().toUpperCase() === name.toUpperCase() && 
+
+    const exists = savedWaTeContacts.some(c =>
+      c.name.trim().toUpperCase() === name.toUpperCase() &&
       c.cluster.trim().toUpperCase() === cluster.toUpperCase()
     );
-    
+
     if (exists) {
       alert(`Kontak dengan nama ${name} di cluster ${cluster} sudah ada!`);
       return;
     }
-    
+
     savedWaTeContacts.push({ name, cluster, phone });
     renderWaTeContactsTable(waTeSearch ? waTeSearch.value : "");
-    
+
     inpName.value = '';
     inpCluster.value = '';
     inpPhone.value = '';
@@ -3126,11 +3905,11 @@ if (btnWaTeSave) {
     try {
       btnWaTeSave.disabled = true;
       btnWaTeSave.textContent = "⏳ Menyimpan...";
-      
+
       savedWaTeContacts = savedWaTeContacts.filter(c => c.name.trim() && c.cluster.trim() && c.phone.trim());
-      
+
       await invoke('save_wa_te_contacts', { contacts: savedWaTeContacts });
-      
+
       if (waTeStatusLbl) {
         waTeStatusLbl.textContent = "✅ Database kontak TE berhasil disimpan!";
         waTeStatusLbl.style.color = "var(--grn)";
@@ -3154,19 +3933,19 @@ if (btnWaTeImport) {
           waTeStatusLbl.textContent = "Mengimpor data Excel...";
           waTeStatusLbl.style.color = "var(--amb)";
         }
-        
+
         await new Promise(r => setTimeout(r, 50));
-        
+
         const count = await invoke('load_te_contacts_excel', { path: selectedPath });
-        
+
         if (waTeStatusLbl) {
           waTeStatusLbl.textContent = `✅ Berhasil mengimpor ${count} kontak TE!`;
           waTeStatusLbl.style.color = "var(--grn)";
         }
-        
+
         await loadWaTeContacts();
         renderWaTeContactsTable(waTeSearch ? waTeSearch.value : "");
-        
+
         setTimeout(() => { if (waTeStatusLbl) waTeStatusLbl.textContent = ""; }, 4000);
       }
     } catch (err) {
@@ -3182,17 +3961,44 @@ if (btnPmWaBlast) {
     try {
       const check = await invoke('wa_status');
       if (!check || check.status !== "CONNECTED") {
-        alert("WhatsApp belum CONNECTED. Silakan aktifkan server dan hubungkan akun WA Anda di tab Broadcast.");
+        alert("WhatsApp is not CONNECTED. Please start the server and connect your WA account in the Broadcast tab.");
         return;
       }
     } catch (e) {
-      alert("Gagal mengecek status WA. Pastikan server Node sudah berjalan. Error: " + e);
+      alert("Failed to check WA status. Ensure Node server is running. Error: " + e);
       return;
     }
 
     const downSites = statusData.filter(s => s.status === 'DOWN');
+
+    if (typeof netdroneData !== 'undefined' && netdroneData && netdroneData.length > 0) {
+      netdroneData.filter(d => !d.skipped && d.matchedDb).forEach(nr => {
+        const siteObj = {
+          status: 'DOWN',
+          impact: 'Full Sitedown',
+          new_site: nr.siteId,
+          old_site: "",
+          site_name: nr.siteName,
+          cluster: nr.cluster || 'UNKNOWN',
+          pic: nr.pic || "",
+          rts: nr.rts || "",
+          start_time: nr.startTime || "",
+          agging: "",
+          remark: nr.remark || "",
+          category: nr.category || "",
+          site_class: nr.siteClass || "",
+          vendor: nr.vendor || "",
+          te_phone: nr.tePhone || "",
+          is_netdrone: true
+        };
+        if (typeof activeRegionFilter === 'undefined' || activeRegionFilter === 'ALL' || getSiteRegion(siteObj) === activeRegionFilter) {
+          downSites.push(siteObj);
+        }
+      });
+    }
+
     if (downSites.length === 0) {
-      alert("Tidak ada site DOWN saat ini.");
+      alert("No site DOWN at this time.");
       return;
     }
 
@@ -3201,34 +4007,35 @@ if (btnPmWaBlast) {
 
     currentTeGroups = {};
     downSites.forEach(s => {
-      const teName = s.pic || "Unknown TE";
-      const cluster = s.cluster || "";
-      
-      // Match in local contacts DB first
-      const localContact = savedWaTeContacts.find(c => 
-        (c.name || "").trim().toUpperCase() === teName.trim().toUpperCase() &&
-        (c.cluster || "").trim().toUpperCase() === cluster.trim().toUpperCase()
+      const teName = (s.pic || s.te_phone || "Unknown TE").trim();
+      const cluster = (s.cluster || "").trim();
+
+      const localContact = savedWaTeContacts.find(c =>
+        (c.name || "").trim().toUpperCase() === teName.toUpperCase()
       );
-      
-      let tePhone = "";
-      if (localContact && localContact.phone) {
-        tePhone = localContact.phone;
-      } else {
-        tePhone = s.te_phone || "";
-      }
-      
-      const key = `${teName}|${cluster}`;
-      
+
+      let tePhone = (localContact && localContact.phone) ? localContact.phone.trim() : "";
+
+      const key = teName.toUpperCase();
+
       if (!currentTeGroups[key]) {
         currentTeGroups[key] = {
           name: teName,
-          cluster: cluster,
+          clusters: new Set(),
           phone: tePhone,
           sites: []
         };
       }
+
+      if (cluster) currentTeGroups[key].clusters.add(cluster);
+      if (!currentTeGroups[key].phone && tePhone) currentTeGroups[key].phone = tePhone;
       currentTeGroups[key].sites.push(s);
     });
+
+    for (let k in currentTeGroups) {
+      const sortedCls = Array.from(currentTeGroups[k].clusters).filter(Boolean).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+      currentTeGroups[k].cluster = sortedCls.join(", ") || "—";
+    }
 
     // Filter out groups that have absolutely NO items to send (sites or pivot alarms)
     const keys = Object.keys(currentTeGroups);
@@ -3241,7 +4048,7 @@ if (btnPmWaBlast) {
     });
 
     waBlastTeProgressContainer.classList.add('hidden');
-    btnCloseWaBlastTe.textContent = "Batal";
+    btnCloseWaBlastTe.textContent = "Cancel";
     btnExecuteWaBlastTe.disabled = false;
     btnCloseWaBlastTe.disabled = false;
     if (chkWaBlastTeSelectAll) chkWaBlastTeSelectAll.checked = true;
@@ -3257,19 +4064,19 @@ if (btnPmWaBlast) {
 function renderWaBlastTeTable(teGroups) {
   if (!waBlastTeTbody) return;
   waBlastTeTbody.innerHTML = '';
-  
+
   const keys = Object.keys(teGroups);
   if (keys.length === 0) {
-    waBlastTeTbody.innerHTML = '<tr><td colspan="5" class="text-center text-subtle py-4">Tidak ada data TE dengan site down.</td></tr>';
+    waBlastTeTbody.innerHTML = '<tr><td colspan="6" class="text-center text-subtle py-4">No TE data with down sites.</td></tr>';
     return;
   }
-  
+
   keys.forEach((key) => {
     const g = teGroups[key];
     const cleanJid = cleanWaNumber(g.phone);
     const isPhoneValid = !!cleanJid;
     const totalCount = getTeMessageItemCount(g.sites, g.cluster).total;
-    
+
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td class="text-center" style="width: 30px;">
@@ -3277,15 +4084,19 @@ function renderWaBlastTeTable(teGroups) {
       </td>
       <td class="font-bold text-success">${g.name} <small class="text-subtle" style="font-weight:normal;">(${g.cluster})</small></td>
       <td>
-        <input type="text" class="fi wa-blast-te-phone-input" data-key="${key}" value="${g.phone}" placeholder="No WA (628...)" style="width:160px; font-size:13.5px; height:24px; padding:2px 6px;">
+        <input type="text" class="fi wa-blast-te-phone-input" data-key="${key}" value="${g.phone}" placeholder="WA Phone (628...)" style="width:160px; font-size:13.5px; height:24px; padding:2px 6px;">
       </td>
       <td class="text-center"><span class="badge ${totalCount > 1 ? 'br' : 'bb'}">${totalCount}</span></td>
+      <td class="text-center">
+        <button class="tbtn btn-preview-te-msg" data-key="${key}" style="font-size:11px; padding:2px 8px;" title="View Message Preview">👁️ Preview</button>
+      </td>
       <td class="wa-blast-te-status-cell text-subtle" data-key="${key}" style="font-size:14px; font-weight:600;">Ready</td>
     `;
-    
+
     const chk = tr.querySelector('.wa-blast-te-chk');
     const phoneInput = tr.querySelector('.wa-blast-te-phone-input');
-    
+    const btnPreview = tr.querySelector('.btn-preview-te-msg');
+
     phoneInput.addEventListener('input', (e) => {
       const newPhone = e.target.value.trim();
       g.phone = newPhone;
@@ -3299,9 +4110,60 @@ function renderWaBlastTeTable(teGroups) {
       }
     });
 
+    if (btnPreview) {
+      btnPreview.addEventListener('click', () => {
+        openTePreviewModal(g);
+      });
+    }
+
     waBlastTeTbody.appendChild(tr);
   });
 }
+
+function openTePreviewModal(g) {
+  const modal = document.getElementById('wa-blast-preview-modal');
+  const lblName = document.getElementById('lbl-preview-te-name');
+  const lblPhone = document.getElementById('lbl-preview-te-phone');
+  const txtMsg = document.getElementById('txt-preview-te-msg');
+
+  if (lblName) lblName.textContent = `${g.name} (${g.cluster})`;
+  if (lblPhone) lblPhone.textContent = g.phone ? `[${g.phone}]` : "[WA Phone unset]";
+
+  const msg = generateTeMessage(g.name, g.sites, g.cluster);
+  if (txtMsg) txtMsg.value = msg || "(No data to send based on current filter configuration)";
+
+  if (modal) {
+    modal.classList.remove('hidden');
+    modal.style.display = 'flex';
+  }
+}
+
+document.getElementById('btn-close-wa-blast-preview')?.addEventListener('click', () => {
+  const modal = document.getElementById('wa-blast-preview-modal');
+  if (modal) {
+    modal.classList.add('hidden');
+    modal.style.display = 'none';
+  }
+});
+
+document.getElementById('btn-done-preview-te')?.addEventListener('click', () => {
+  const modal = document.getElementById('wa-blast-preview-modal');
+  if (modal) {
+    modal.classList.add('hidden');
+    modal.style.display = 'none';
+  }
+});
+
+document.getElementById('btn-copy-preview-te-msg')?.addEventListener('click', () => {
+  const txtMsg = document.getElementById('txt-preview-te-msg');
+  if (txtMsg && txtMsg.value) {
+    navigator.clipboard.writeText(txtMsg.value);
+    const btn = document.getElementById('btn-copy-preview-te-msg');
+    const old = btn.textContent;
+    btn.textContent = "✓ Copied!";
+    setTimeout(() => btn.textContent = old, 2000);
+  }
+});
 
 if (chkWaBlastTeSelectAll) {
   chkWaBlastTeSelectAll.addEventListener('change', (e) => {
@@ -3322,11 +4184,11 @@ if (btnExecuteWaBlastTe) {
   btnExecuteWaBlastTe.addEventListener('click', async () => {
     const selectedChks = document.querySelectorAll('.wa-blast-te-chk:checked');
     if (selectedChks.length === 0) {
-      alert("Silakan pilih minimal 1 TE untuk di-blast.");
+      alert("Please select at least 1 TE to blast.");
       return;
     }
 
-    const confirmed = confirm(`Kirim pesan Japri ke ${selectedChks.length} TE?`);
+    const confirmed = confirm(`Send direct message to ${selectedChks.length} TEs?`);
     if (!confirmed) return;
 
     const blastTargets = [];
@@ -3337,11 +4199,11 @@ if (btnExecuteWaBlastTe) {
       const g = currentTeGroups[key];
       const jid = cleanWaNumber(g.phone);
       const message = generateTeMessage(g.name, g.sites, g.cluster);
-      
+
       blastTargets.push({ key, name: g.name, jid, message });
 
       // Auto-save logic
-      const existsIdx = savedWaTeContacts.findIndex(c => 
+      const existsIdx = savedWaTeContacts.findIndex(c =>
         (c.name || "").trim().toUpperCase() === g.name.trim().toUpperCase() &&
         (c.cluster || "").trim().toUpperCase() === g.cluster.trim().toUpperCase()
       );
@@ -3370,26 +4232,26 @@ if (btnExecuteWaBlastTe) {
     waBlastTeProgressContainer.classList.remove('hidden');
     waBlastTeProgressPercent.textContent = "0%";
     waBlastTeProgressFill.style.width = "0%";
-    waBlastTeProgressStatus.textContent = "Mulai mengirim...";
+    waBlastTeProgressStatus.textContent = "Starting blast...";
 
     const delayMs = parseInt(numWaBlastTeDelay.value) || 2000;
 
     for (let i = 0; i < blastTargets.length; i++) {
       const target = blastTargets[i];
       const statusCell = document.querySelector(`.wa-blast-te-status-cell[data-key="${target.key}"]`);
-      
+
       if (statusCell) {
-        statusCell.textContent = "⏳ Mengirim...";
+        statusCell.textContent = "⏳ Sending...";
         statusCell.style.color = "var(--amb)";
       }
 
       const percent = Math.round((i / blastTargets.length) * 100);
       waBlastTeProgressPercent.textContent = `${percent}%`;
       waBlastTeProgressFill.style.width = `${percent}%`;
-      waBlastTeProgressStatus.textContent = `Mengirim ke ${target.name} (${i+1}/${blastTargets.length})...`;
+      waBlastTeProgressStatus.textContent = `Sending to ${target.name} (${i + 1}/${blastTargets.length})...`;
 
       try {
-        const result = await invoke('wa_broadcast', { 
+        const result = await invoke('wa_broadcast', {
           targets: [{ group_id: target.jid, message: target.message }],
           delay_ms: 0
         });
@@ -3397,17 +4259,17 @@ if (btnExecuteWaBlastTe) {
         const success = result && result.success > 0;
         if (success) {
           if (statusCell) {
-            statusCell.textContent = "✅ Berhasil";
+            statusCell.textContent = "✅ Success";
             statusCell.style.color = "var(--grn)";
           }
         } else {
           if (statusCell) {
-            statusCell.textContent = "❌ Gagal";
+            statusCell.textContent = "❌ Failed";
             statusCell.style.color = "var(--red)";
           }
         }
       } catch (err) {
-        console.error("Gagal blast ke TE:", target.name, err);
+        console.error("Blast failed for TE:", target.name, err);
         if (statusCell) {
           statusCell.textContent = "❌ Error";
           statusCell.style.color = "var(--red)";
@@ -3422,19 +4284,293 @@ if (btnExecuteWaBlastTe) {
 
     waBlastTeProgressPercent.textContent = "100%";
     waBlastTeProgressFill.style.width = "100%";
-    waBlastTeProgressStatus.textContent = `Selesai mengirim ke ${blastTargets.length} TE!`;
-    
+    waBlastTeProgressStatus.textContent = `Done sending to ${blastTargets.length} TEs!`;
+
     // Auto-save contacts to file if changes occurred
     if (needSaveContacts) {
       try {
         await invoke('save_wa_te_contacts', { contacts: savedWaTeContacts });
-        console.log("Database kontak TE terupdate secara otomatis.");
+        console.log("TE contact database auto-updated.");
       } catch (err) {
-        console.warn("Gagal menyimpan kontak secara otomatis:", err);
+        console.warn("Failed to auto-save contacts:", err);
       }
     }
 
-    btnCloseWaBlastTe.textContent = "Tutup";
+    btnCloseWaBlastTe.textContent = "Close";
     btnCloseWaBlastTe.disabled = false;
   });
 }
+
+// ==========================================
+// WA BLAST FILTER MODAL LOGIC
+// ==========================================
+function syncBlastFilterUI() {
+  if (chkFilterRemarkTrigger) chkFilterRemarkTrigger.checked = blastFilterCfg.filterRemarkTrigger;
+  if (chkFilterSitedown) chkFilterSitedown.checked = blastFilterCfg.enableSitedown;
+  if (chkFilterCelldown) chkFilterCelldown.checked = blastFilterCfg.enableCelldown;
+  if (chkFilterBcch) chkFilterBcch.checked = blastFilterCfg.enableBcch;
+  if (chkFilterEnva) chkFilterEnva.checked = blastFilterCfg.enableEnva;
+  if (chkFilterStolen) chkFilterStolen.checked = blastFilterCfg.enableStolen;
+
+  renderFilterSiteTables();
+  updateFilterCountsInUI();
+}
+
+const chkWaEnableNetdrone = document.getElementById('chk-wa-enable-netdrone');
+if (chkWaEnableNetdrone) {
+  chkWaEnableNetdrone.addEventListener('change', () => {
+    const btnGenWa = document.getElementById('btn-gen-wa');
+    if (btnGenWa) btnGenWa.click();
+  });
+}
+
+// Initial load of WA TE contacts for Dashboard cards
+loadWaTeContacts();
+
+function updateFilterCountsInUI() {
+  const bcchKw = (fmtMsg && fmtMsg.key_bcch || "BCCH").toUpperCase();
+  const downSites = statusData.filter(s => s.status === 'DOWN');
+
+  let sitedownTotal = 0, sitedownSelected = 0;
+  let celldownTotal = 0, celldownSelected = 0;
+  let bcchTotal = 0, bcchSelected = 0;
+
+  downSites.forEach(s => {
+    const isFully = s.is_netdrone || (s.impact && (s.impact.toLowerCase().includes('fully') || s.impact.toLowerCase().includes('sitedown')));
+    const isBcch = !s.is_netdrone && s.remark && s.remark.toUpperCase().includes(bcchKw);
+    const sel = isSiteSelected(s);
+    if (isFully) {
+      sitedownTotal++;
+      if (sel) sitedownSelected++;
+    } else if (isBcch) {
+      bcchTotal++;
+      if (sel) bcchSelected++;
+    } else {
+      celldownTotal++;
+      if (sel) celldownSelected++;
+    }
+  });
+
+  const stollenRows = (pivotData || []).filter(r => r.monitoring === 'STOLLEN' || r.monitoring === 'CABLE STOLLEN');
+  const envaRows = (pivotData || []).filter(r => r.monitoring.includes('POWER') || r.monitoring.includes('ENVA') || r.monitoring.includes('NETECO'));
+
+  const setCnt = (id, selected, total) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = `${selected}/${total} data`;
+  };
+
+  setCnt('cnt-filter-sitedown', sitedownSelected, sitedownTotal);
+  setCnt('cnt-filter-celldown', celldownSelected, celldownTotal);
+  setCnt('cnt-filter-bcch', bcchSelected, bcchTotal);
+
+  const setSimpleCnt = (id, count) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = `${count} data`;
+  };
+  setSimpleCnt('cnt-filter-enva', envaRows.length);
+  setSimpleCnt('cnt-filter-stolen', stollenRows.length);
+
+  const netdroneMatchedCount = (netdroneData || []).filter(d => !d.skipped && d.matchedDb).length;
+  setSimpleCnt('cnt-filter-netdrone', netdroneMatchedCount);
+}
+
+function renderFilterSiteTables() {
+  const bcchKw = (fmtMsg && fmtMsg.key_bcch || "BCCH").toUpperCase();
+  let downSites = statusData.filter(s => s.status === 'DOWN');
+
+  if (typeof activeRegionFilter !== 'undefined' && activeRegionFilter !== 'ALL') {
+    downSites = downSites.filter(s => getSiteRegion(s) === activeRegionFilter);
+  }
+
+  const sitedownList = [];
+  const celldownList = [];
+  const bcchList = [];
+
+  downSites.forEach(s => {
+    const isFully = s.is_netdrone || (s.impact && (s.impact.toLowerCase().includes('fully') || s.impact.toLowerCase().includes('sitedown')));
+    const isBcch = !s.is_netdrone && s.remark && s.remark.toUpperCase().includes(bcchKw);
+    if (isFully) sitedownList.push(s);
+    else if (isBcch) bcchList.push(s);
+    else celldownList.push(s);
+  });
+
+  const fillTbodyWithClusters = (tbodyId, list) => {
+    const tbody = document.getElementById(tbodyId);
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    if (list.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" class="text-center text-subtle py-2">Tidak ada data.</td></tr>';
+      return;
+    }
+
+    // Group list by Cluster
+    const groups = {};
+    list.forEach(s => {
+      const cl = s.cluster || 'UNKNOWN CLUSTER';
+      if (!groups[cl]) groups[cl] = [];
+      groups[cl].push(s);
+    });
+
+    const sortedClusters = Object.keys(groups).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+
+    sortedClusters.forEach(clusterName => {
+      const clusterSites = groups[clusterName];
+      const allSelected = clusterSites.every(s => isSiteSelected(s));
+
+      // Cluster Heading Row with Checkbox
+      const hdrTr = document.createElement('tr');
+      hdrTr.style.background = 'var(--bg-surface)';
+      hdrTr.style.borderTop = '1px solid var(--bdr)';
+      hdrTr.style.borderBottom = '1px solid var(--bdr)';
+      hdrTr.innerHTML = `
+        <td class="text-center" style="width:26px;padding:4px 0;">
+          <input type="checkbox" class="cluster-group-chk" data-cluster="${clusterName}" ${allSelected ? 'checked' : ''} style="width:14px;height:14px;cursor:pointer;">
+        </td>
+        <td colspan="4" style="font-weight:bold;color:var(--accent-lit);font-size:11px;padding:5px 8px;">
+          📍 Cluster: ${clusterName} <span style="font-size:10px;color:var(--txt-3);font-weight:normal;">(${clusterSites.length} site)</span>
+        </td>
+      `;
+
+      const clusterChk = hdrTr.querySelector('.cluster-group-chk');
+      clusterChk.addEventListener('change', (e) => {
+        const checked = e.target.checked;
+        clusterSites.forEach(s => {
+          const key = getSiteKey(s);
+          siteSelectionMap[key] = checked;
+        });
+        const safeClusterClass = `site-chk-${tbodyId}-${clusterName.replace(/[^a-zA-Z0-9]/g, '_')}`;
+        const rowChks = tbody.querySelectorAll(`.${safeClusterClass}`);
+        rowChks.forEach(c => c.checked = checked);
+        updateFilterCountsInUI();
+      });
+
+      tbody.appendChild(hdrTr);
+
+      // Render site rows for this cluster
+      clusterSites.forEach(s => {
+        const key = getSiteKey(s);
+        const isSelected = isSiteSelected(s);
+        const isTrigger = shouldSendToTe(s.remark);
+        const safeClusterClass = `site-chk-${tbodyId}-${clusterName.replace(/[^a-zA-Z0-9]/g, '_')}`;
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="text-center" style="width:26px;">
+            <input type="checkbox" class="site-filter-chk ${safeClusterClass} checkbox" data-key="${key}" ${isSelected ? 'checked' : ''}>
+          </td>
+          <td class="font-bold text-success" style="width:85px;">${s.new_site}</td>
+          <td style="width:110px; font-weight:600; color:var(--accent-lit);">${s.cluster || '—'}</td>
+          <td>${s.site_name}</td>
+          <td style="color:${isTrigger ? 'var(--grn)' : 'var(--txt-3)'}; font-size:10px;">
+            ${s.remark || '—'} ${isTrigger ? '<span style="color:var(--grn);font-weight:bold;">(Auto)</span>' : ''}
+          </td>
+        `;
+
+        tr.querySelector('input').addEventListener('change', (e) => {
+          siteSelectionMap[key] = e.target.checked;
+          const nowAllSelected = clusterSites.every(item => isSiteSelected(item));
+          clusterChk.checked = nowAllSelected;
+          updateFilterCountsInUI();
+        });
+
+        tbody.appendChild(tr);
+      });
+    });
+  };
+
+  fillTbodyWithClusters('tbody-filter-sitedown', sitedownList);
+  fillTbodyWithClusters('tbody-filter-celldown', celldownList);
+  fillTbodyWithClusters('tbody-filter-bcch', bcchList);
+}
+
+// Expand / Collapse toggles for Site Down, Cell Down, BCCH detail tables
+['sitedown', 'celldown', 'bcch'].forEach(cat => {
+  const toggleBtn = document.getElementById(`toggle-expand-${cat}`);
+  const container = document.getElementById(`list-container-${cat}`);
+  const icon = document.getElementById(`icon-expand-${cat}`);
+
+  if (toggleBtn && container) {
+    toggleBtn.addEventListener('click', () => {
+      const isHidden = container.style.display === 'none' || container.style.display === '';
+      container.style.display = isHidden ? 'block' : 'none';
+      if (icon) icon.textContent = isHidden ? '▲ Sembunyikan' : '▼ Detail';
+    });
+  }
+});
+
+// Category Select-All Checkboxes
+const bindCategorySelectAll = (chkId, tbodyId) => {
+  const chkAll = document.getElementById(chkId);
+  if (!chkAll) return;
+  chkAll.addEventListener('change', (e) => {
+    const checked = e.target.checked;
+    const tbody = document.getElementById(tbodyId);
+    if (!tbody) return;
+    tbody.querySelectorAll('.site-filter-chk').forEach(c => {
+      c.checked = checked;
+      siteSelectionMap[c.dataset.key] = checked;
+    });
+    updateFilterCountsInUI();
+  });
+};
+
+bindCategorySelectAll('chk-sitedown-select-all', 'tbody-filter-sitedown');
+bindCategorySelectAll('chk-celldown-select-all', 'tbody-filter-celldown');
+bindCategorySelectAll('chk-bcch-select-all', 'tbody-filter-bcch');
+
+// Toggle Remark Trigger Event Listener -> reset siteSelectionMap to re-evaluate trigger match defaults
+if (chkFilterRemarkTrigger) {
+  chkFilterRemarkTrigger.addEventListener('change', (e) => {
+    blastFilterCfg.filterRemarkTrigger = e.target.checked;
+    siteSelectionMap = {}; // Reset so isSiteSelected recalculates based on new trigger rule!
+    renderFilterSiteTables();
+    updateFilterCountsInUI();
+  });
+}
+
+if (btnPmBlastFilter) {
+  btnPmBlastFilter.addEventListener('click', () => {
+    syncBlastFilterUI();
+    if (waBlastFilterModal) {
+      waBlastFilterModal.classList.remove('hidden');
+      waBlastFilterModal.style.display = 'flex';
+    }
+  });
+}
+
+if (btnCloseWaBlastFilter) {
+  btnCloseWaBlastFilter.addEventListener('click', () => {
+    if (waBlastFilterModal) {
+      waBlastFilterModal.classList.add('hidden');
+      waBlastFilterModal.style.display = 'none';
+    }
+  });
+}
+
+if (btnSaveWaBlastFilter) {
+  btnSaveWaBlastFilter.addEventListener('click', () => {
+    const chkFilterNetdrone = document.getElementById('chk-filter-netdrone');
+    blastFilterCfg.filterRemarkTrigger = chkFilterRemarkTrigger ? chkFilterRemarkTrigger.checked : true;
+    blastFilterCfg.enableSitedown = chkFilterSitedown ? chkFilterSitedown.checked : true;
+    blastFilterCfg.enableCelldown = chkFilterCelldown ? chkFilterCelldown.checked : true;
+    blastFilterCfg.enableBcch = chkFilterBcch ? chkFilterBcch.checked : true;
+    blastFilterCfg.enableEnva = chkFilterEnva ? chkFilterEnva.checked : false;
+    blastFilterCfg.enableStolen = chkFilterStolen ? chkFilterStolen.checked : false;
+    blastFilterCfg.enableNetdrone = chkFilterNetdrone ? chkFilterNetdrone.checked : false;
+
+    const chkWaEnableNetdrone = document.getElementById('chk-wa-enable-netdrone');
+    if (chkWaEnableNetdrone) chkWaEnableNetdrone.checked = blastFilterCfg.enableNetdrone;
+
+    saveBlastFilterCfg();
+
+    if (waBlastFilterModal) {
+      waBlastFilterModal.classList.add('hidden');
+      waBlastFilterModal.style.display = 'none';
+    }
+  });
+}
+
+// Initial load of WA TE contacts for Dashboard cards
+loadWaTeContacts();
+
