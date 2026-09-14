@@ -659,8 +659,13 @@ if (btnWaStart) {
       let isActive = false;
       try {
         const check = await invoke('wa_status');
-        if (check && (check.status === "CONNECTED" || check.status === "QR_READY")) {
+        if (check) {
           isActive = true;
+          if (check.status === "DISCONNECTED") {
+            try {
+              await invoke('wa_logout');
+            } catch (e) {}
+          }
         }
       } catch (e) {
         // Server not running
@@ -694,6 +699,29 @@ if (btnWaStart) {
       }
       const logsPre = document.getElementById('wa-server-logs');
       if (logsPre) logsPre.textContent += `\n[ERROR] Gagal memanggil wa_start_server: ${err}`;
+    }
+  });
+}
+
+const btnModalWaReset = document.getElementById('btn-modal-wa-reset');
+if (btnModalWaReset) {
+  btnModalWaReset.addEventListener('click', async () => {
+    if (!confirm("Apakah Anda yakin ingin me-reset session WhatsApp dan meminta QR Code baru?")) return;
+
+    try {
+      btnModalWaReset.disabled = true;
+      btnModalWaReset.innerHTML = "⏳ Mereset...";
+
+      await invoke('wa_logout');
+
+      waPollInterval = 1000;
+      startWaPolling();
+      await checkWaStatus();
+    } catch (err) {
+      alert("Gagal me-reset WA: " + err);
+    } finally {
+      btnModalWaReset.disabled = false;
+      btnModalWaReset.innerHTML = "<span>🔄 Reset / Scan Ulang</span>";
     }
   });
 }
