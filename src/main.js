@@ -18,7 +18,7 @@ const btnTheme = document.getElementById('btn-theme');
 btnTheme.addEventListener('click', () => {
   document.body.classList.toggle('light');
   const isLight = document.body.classList.contains('light');
-  btnTheme.textContent = isLight ? '☀️ Light' : '🌙 Dark';
+  btnTheme.textContent = isLight ? '◑' : '◐';
   if (typeof updateMapTheme === 'function') {
     updateMapTheme(isLight);
   }
@@ -379,6 +379,10 @@ if (btnLoadDb) {
         const count = await invoke('load_db_excel', { path: selectedPath });
         document.getElementById('dash-db').textContent = count;
 
+        if (typeof SiteChangesManager !== 'undefined' && Object.keys(SiteChangesManager.siteOverrides).length > 0) {
+          await SiteChangesManager.applyToMemory(false, true);
+        }
+
         if (lblDash) {
           lblDash.textContent = `📁 ${fileName} (${count} baris)`;
           lblDash.style.color = "var(--accent-lit)";
@@ -721,7 +725,7 @@ if (btnWaReset) {
     } catch (err) {
       alert("Gagal me-reset WA: " + err);
       if (btnWaReset) {
-        btnWaReset.innerHTML = "🔌 Reset WA";
+        btnWaReset.innerHTML = "Reset WA";
         btnWaReset.disabled = false;
       }
     }
@@ -1028,8 +1032,13 @@ if (btnWaSend) {
     const progressStatus = document.getElementById('wa-bc-progress-status');
     const progressPercent = document.getElementById('wa-bc-progress-percent');
     const progressFill = document.getElementById('wa-bc-progress-fill');
+    const progressPulse = document.getElementById('wa-bc-pulse');
 
-    if (progressContainer) progressContainer.style.display = 'block';
+    if (progressContainer) {
+      progressContainer.style.display = 'flex';
+      if (progressFill) progressFill.style.background = 'var(--accent)';
+      if (progressPulse) progressPulse.style.background = 'var(--accent)';
+    }
 
     let totalSuccess = 0;
     let totalFailed = 0;
@@ -1065,6 +1074,7 @@ if (btnWaSend) {
         progressFill.style.width = `100%`;
         progressFill.style.background = `var(--grn)`;
       }
+      if (progressPulse) progressPulse.style.background = 'var(--grn)';
 
       // Add to logs
       const groupsArr = selected.map(g => g.group_name);
@@ -1072,8 +1082,9 @@ if (btnWaSend) {
 
       setTimeout(() => {
         if (progressContainer) progressContainer.style.display = 'none';
-        if (progressFill) progressFill.style.background = 'var(--accent-lit)';
-      }, 5000);
+        if (progressFill) progressFill.style.background = 'var(--accent)';
+        if (progressPulse) progressPulse.style.background = 'var(--accent)';
+      }, 7000);
 
     } catch (err) {
       alert("Error Broadcast: " + err);
@@ -1081,6 +1092,11 @@ if (btnWaSend) {
       btnWaSend.disabled = false;
       btnWaSend.textContent = "KIRIM BROADCAST";
     }
+  });
+
+  document.getElementById('btn-close-bc-floating')?.addEventListener('click', () => {
+    const c = document.getElementById('wa-bc-progress-container');
+    if (c) c.style.display = 'none';
   });
 }
 
@@ -1242,29 +1258,117 @@ Object.values(dbFields).forEach(el => {
 // Maps Integration Logic
 let siteMap = null;
 let mapTileLayer = null;
+let mapTileLayerRef = null;
 let mapMarkers = [];
+let currentMapTileType = localStorage.getItem('cjhelper_map_tile_type') || 'auto';
+
+function applyMapTiles() {
+  if (!siteMap) return;
+
+  const isLight = document.body.classList.contains('light');
+  let selected = currentMapTileType;
+  if (selected === 'auto') {
+    selected = isLight ? 'osm' : 'dark';
+  }
+
+  // Remove existing layers
+  if (mapTileLayer) {
+    try { siteMap.removeLayer(mapTileLayer); } catch (e) {}
+    mapTileLayer = null;
+  }
+  if (mapTileLayerRef) {
+    try { siteMap.removeLayer(mapTileLayerRef); } catch (e) {}
+    mapTileLayerRef = null;
+  }
+
+  const cartoKey = (localStorage.getItem('cjhelper_carto_api_key') || '').trim();
+
+  if (selected === 'satellite') {
+    mapTileLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      attribution: 'Tiles &copy; Esri',
+      maxZoom: 19,
+      crossOrigin: true
+    }).addTo(siteMap);
+  } else if (selected === 'osm') {
+    mapTileLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors',
+      maxZoom: 19,
+      crossOrigin: true
+    }).addTo(siteMap);
+  } else if (selected === 'carto' && cartoKey) {
+    const sub = isLight ? 'light_all' : 'dark_all';
+    mapTileLayer = L.tileLayer(`https://{s}.basemaps.cartocdn.com/${sub}/{z}/{x}/{y}{r}.png?key=${cartoKey}`, {
+      attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+      subdomains: 'abcd',
+      maxZoom: 19,
+      crossOrigin: true
+    }).addTo(siteMap);
+  } else {
+    // Default Clean Dark Map (Esri Canvas Dark Gray + Reference, NO WATERMARK & NO API KEY NEEDED!)
+    mapTileLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+      attribution: 'Tiles &copy; Esri &mdash; OpenStreetMap contributors',
+      maxNativeZoom: 16,
+      maxZoom: 19,
+      crossOrigin: true
+    }).addTo(siteMap);
+
+    mapTileLayerRef = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}', {
+      attribution: '',
+      maxNativeZoom: 16,
+      maxZoom: 19,
+      crossOrigin: true
+    }).addTo(siteMap);
+  }
+}
 
 function initMap() {
   if (siteMap) return;
   siteMap = L.map('map-container').setView([-6.98, 110.42], 8); // Default Central Java
-  const isLight = document.body.classList.contains('light');
-  const tileUrl = isLight
-    ? 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'
-    : 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
-  mapTileLayer = L.tileLayer(tileUrl, {
-    attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
-    subdomains: 'abcd',
-    maxZoom: 19,
-    crossOrigin: true
-  }).addTo(siteMap);
+  applyMapTiles();
+
+  // Bind Tile Selector & Key Button
+  const selMapTileType = document.getElementById('sel-map-tile-type');
+  const btnMapCartoKey = document.getElementById('btn-map-carto-key');
+
+  if (selMapTileType) {
+    selMapTileType.value = currentMapTileType;
+    selMapTileType.addEventListener('change', (e) => {
+      currentMapTileType = e.target.value;
+      if (currentMapTileType === 'carto' && !localStorage.getItem('cjhelper_carto_api_key')) {
+        if (btnMapCartoKey) btnMapCartoKey.click();
+        return;
+      }
+      localStorage.setItem('cjhelper_map_tile_type', currentMapTileType);
+      applyMapTiles();
+    });
+  }
+
+  if (btnMapCartoKey) {
+    btnMapCartoKey.addEventListener('click', () => {
+      const curr = localStorage.getItem('cjhelper_carto_api_key') || '';
+      const key = prompt("Masukkan CARTO Basemaps API Key Anda (gratis di carto.com/basemaps/apikey):\nKosongkan jika ingin memakai Dark Map bawaan (Esri) tanpa API Key.", curr);
+      if (key !== null) {
+        if (key.trim()) {
+          localStorage.setItem('cjhelper_carto_api_key', key.trim());
+          currentMapTileType = 'carto';
+          if (selMapTileType) selMapTileType.value = 'carto';
+        } else {
+          localStorage.removeItem('cjhelper_carto_api_key');
+          if (currentMapTileType === 'carto') {
+            currentMapTileType = 'auto';
+            if (selMapTileType) selMapTileType.value = 'auto';
+          }
+        }
+        localStorage.setItem('cjhelper_map_tile_type', currentMapTileType);
+        applyMapTiles();
+      }
+    });
+  }
 }
 
 function updateMapTheme(isLight) {
-  if (siteMap && mapTileLayer) {
-    const tileUrl = isLight
-      ? 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'
-      : 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
-    mapTileLayer.setUrl(tileUrl);
+  if (siteMap) {
+    applyMapTiles();
   }
 }
 
@@ -1325,6 +1429,7 @@ document.getElementById('btn-map-plot-down').addEventListener('click', async () 
 
       const m = L.marker([s.lat, s.lon], { icon }).addTo(siteMap);
 
+      const safeSiteName = (s.site_name || '').replace(/'/g, "\\'");
       m.bindPopup(`
         <div style="color: #333; font-family: Inter, sans-serif; min-width: 200px;">
           <h3 style="margin: 0 0 5px 0; color: ${color};">${s.site_id}</h3>
@@ -1335,6 +1440,9 @@ document.getElementById('btn-map-plot-down').addEventListener('click', async () 
           Sejak: ${s.start_time}<br/>
           <hr style="margin: 5px 0;" />
           <em style="font-size: 12px;">${s.remark || 'No remark'}</em>
+          <div style="margin-top: 8px;">
+            <button class="tbtn-p" style="width:100%;font-size:11px;padding:4px 8px;cursor:pointer;border:none;border-radius:4px;background:var(--accent);color:white;font-weight:600;" onclick="window.openStreetViewPopup(${s.lat}, ${s.lon}, '${s.site_id} - ${safeSiteName}')">Street View</button>
+          </div>
         </div>
       `);
 
@@ -1350,7 +1458,7 @@ document.getElementById('btn-map-plot-down').addEventListener('click', async () 
   } catch (err) {
     console.error(err);
     alert("Gagal plot map: " + err);
-    document.getElementById('btn-map-plot-down').textContent = "📍 Plot DOWN Sites";
+    document.getElementById('btn-map-plot-down').textContent = "Plot DOWN Sites";
   }
 });
 
@@ -1464,7 +1572,7 @@ document.getElementById('btn-wa-refresh-groups').addEventListener('click', async
     btn.textContent = oldT;
   } catch (e) {
     alert("Gagal memuat grup: " + e);
-    document.getElementById('btn-wa-refresh-groups').textContent = "🔄 Refresh dari WA";
+    document.getElementById('btn-wa-refresh-groups').textContent = "Refresh dari WA";
   }
 });
 
@@ -1667,6 +1775,10 @@ document.getElementById('btn-db-edit-save').addEventListener('click', async () =
 
   try {
     await invoke('update_site_db', { editData });
+    syncTeContactFromSite(editData);
+    if (typeof SiteChangesManager !== 'undefined') {
+      SiteChangesManager.recordSiteEdit(editData.site_id, editData);
+    }
     const btn = document.getElementById('btn-db-edit-save');
     const oldT = btn.textContent;
     btn.textContent = "✅ Tersimpan di Memory!";
@@ -1692,7 +1804,7 @@ document.getElementById('btn-db-export').addEventListener('click', async () => {
     document.getElementById('db-edit-status-header').textContent = "✅ Excel Diekspor";
   } catch (e) {
     alert("Gagal export DB: " + e);
-    document.getElementById('btn-db-export').textContent = "📥 Export DB (Save As)";
+    document.getElementById('btn-db-export').textContent = "Export DB (Save As)";
   }
 });
 
@@ -1968,7 +2080,9 @@ function processPMData() {
 
   if (pmMode === 'cluster') {
     downSites.forEach(s => {
-      const pic = s.pic || s.te_name || "TE UNKNOWN";
+      const rawPic = (s.pic || s.te_name || "").trim();
+      const isUntitled = !rawPic || rawPic === "—" || rawPic === "-" || rawPic === "0" || rawPic.toLowerCase() === "nan" || rawPic.toLowerCase().includes("untitled") || rawPic.toLowerCase() === "unknown te" || rawPic.toLowerCase() === "te unknown" || rawPic.toLowerCase() === "null";
+      const pic = isUntitled ? `TE UNKNOWN (${s.cluster || 'UNKNOWN'})` : rawPic;
       const key = pic;
 
       if (!rawMap[key]) {
@@ -2411,6 +2525,10 @@ if (btnDbEditSearch) {
 
     try {
       await invoke('update_site_db', { editData });
+      syncTeContactFromSite(editData);
+      if (typeof SiteChangesManager !== 'undefined') {
+        SiteChangesManager.recordSiteEdit(editData.site_id, editData);
+      }
       lblDbEditStatus.textContent = '✅ Berhasil disimpan sementara ke memory.';
       lblDbEditStatus.style.color = 'var(--grn)';
       setTimeout(() => lblDbEditStatus.textContent = '', 3000);
@@ -2448,7 +2566,7 @@ if (btnMapSearch) {
     const val = mapSiteInput.value.trim();
     if (!val) return alert('Masukkan Site ID, Koordinat, atau Alamat!');
 
-    btnMapSearch.textContent = '⏳ ...';
+    btnMapSearch.textContent = 'Mencari...';
 
     try {
       let lat = 0;
@@ -2480,14 +2598,14 @@ if (btnMapSearch) {
             lon = parseFloat(data[0].lon);
             title = data[0].display_name;
           } else {
-            btnMapSearch.textContent = '🔍 Cari';
+            btnMapSearch.textContent = 'Cari';
             return alert(`'${val}' tidak ditemukan sebagai Site ID, Koordinat, maupun Alamat.`);
           }
         }
       }
 
       if (isNaN(lat) || isNaN(lon) || lat === 0) {
-        btnMapSearch.textContent = '🔍 Cari';
+        btnMapSearch.textContent = 'Cari';
         return alert(`Koordinat tidak valid.`);
       }
 
@@ -2504,8 +2622,16 @@ if (btnMapSearch) {
       `;
       const icon = L.divIcon({ className: 'custom-div-icon', html: markerHtml, iconSize: [16, 16], iconAnchor: [8, 8] });
 
+      const safeTargetTitle = (title || '').replace(/'/g, "\\'");
       const targetMarker = L.marker([lat, lon], { icon }).addTo(siteMap)
-        .bindPopup(`<b>${isSite ? 'BTS Site' : 'Lokasi Pelanggan'}</b><br>${title}`).openPopup();
+        .bindPopup(`
+          <div style="font-family:var(--ui);min-width:180px;font-size:12px;">
+            <b>${isSite ? 'BTS Site' : 'Lokasi Pelanggan'}</b><br>${title}
+            <div style="margin-top:8px;">
+              <button class="tbtn-p" style="width:100%;font-size:11px;padding:4px 8px;cursor:pointer;border:none;border-radius:4px;background:var(--accent);color:white;font-weight:600;" onclick="window.openStreetViewPopup(${lat}, ${lon}, '${safeTargetTitle}')">Street View</button>
+            </div>
+          </div>
+        `).openPopup();
       mapMarkers.push(targetMarker);
 
       if (!isSite) {
@@ -2537,8 +2663,16 @@ if (btnMapSearch) {
               html: `<div style="background-color: ${btsColor}; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 5px rgba(0,0,0,0.5);"></div>`,
               iconSize: [12, 12], iconAnchor: [6, 6]
             });
+            const safeNearestName = (s.site_name || '').replace(/'/g, "\\'");
             const m = L.marker([s.lat, s.lon], { icon: sIcon }).addTo(siteMap)
-              .bindPopup(`<div style="font-family:var(--ui);font-size:12px;"><b>${s.site_id}</b><br>${s.site_name}<br>Jarak: ${s.distance_km.toFixed(2)} KM${remarkHtml}</div>`);
+              .bindPopup(`
+                <div style="font-family:var(--ui);font-size:12px;min-width:180px;">
+                  <b>${s.site_id}</b><br>${s.site_name}<br>Jarak: ${s.distance_km.toFixed(2)} KM${remarkHtml}
+                  <div style="margin-top:8px;">
+                    <button class="tbtn-p" style="width:100%;font-size:11px;padding:4px 8px;cursor:pointer;border:none;border-radius:4px;background:var(--accent);color:white;font-weight:600;" onclick="window.openStreetViewPopup(${s.lat}, ${s.lon}, '${s.site_id} - ${safeNearestName}')">Street View</button>
+                  </div>
+                </div>
+              `);
             mapMarkers.push(m);
             bounds.extend([s.lat, s.lon]);
 
@@ -2578,7 +2712,7 @@ if (btnMapSearch) {
     } catch (e) {
       alert(`Error: ${e}`);
     } finally {
-      btnMapSearch.textContent = '🔍 Cari';
+      btnMapSearch.textContent = 'Cari';
     }
   });
 
@@ -2590,30 +2724,205 @@ if (btnMapSearch) {
     if (e.key === 'Enter') btnMapSearch.click();
   });
 
-  btnMapStreet.addEventListener('click', async () => {
-    const sid = mapSiteInput.value.trim();
-    if (!sid) return alert('Masukkan Site ID!');
+  // ==========================================
+  // STREET VIEW MODAL CONTROLLER
+  // ==========================================
+  let currentStreetViewCoords = { lat: 0, lon: 0, title: '' };
+  let currentStreetViewMode = 'pano'; // 'pano' | 'sat'
 
-    try {
-      const row = await invoke('lookup_site', { siteId: sid });
-      if (!row) {
-        return alert(`Site ${sid} tidak ditemukan di database!`);
+  const modalStreetView = document.getElementById('modal-street-view');
+  const iframeStreetView = document.getElementById('iframe-street-view');
+  const streetViewTitle = document.getElementById('street-view-title');
+  const streetViewCoords = document.getElementById('street-view-coords');
+  const streetViewLoader = document.getElementById('street-view-loader');
+  const btnCloseStreetView = document.getElementById('btn-close-street-view');
+  const btnStreetModePano = document.getElementById('btn-street-mode-pano');
+  const btnStreetModeSat = document.getElementById('btn-street-mode-sat');
+  const btnStreetOpenBrowser = document.getElementById('btn-street-open-browser');
+  const btnCopyStreetCoords = document.getElementById('btn-copy-street-coords');
+
+  function updateStreetViewIframeSrc() {
+    const { lat, lon } = currentStreetViewCoords;
+    if (!lat || !lon || !iframeStreetView) return;
+
+    if (streetViewLoader) {
+      streetViewLoader.style.display = 'flex';
+      streetViewLoader.style.opacity = '1';
+    }
+
+    if (currentStreetViewMode === 'pano') {
+      iframeStreetView.src = `https://www.google.com/maps/embed?origin=mfe&pb=!6m6!1m5!2m2!1d${lat}!2d${lon}!4f-0!5f1`;
+      if (btnStreetModePano && btnStreetModeSat) {
+        btnStreetModePano.className = 'tbtn-p';
+        btnStreetModePano.style.background = '';
+        btnStreetModePano.style.border = '';
+        btnStreetModeSat.className = 'tbtn';
+        btnStreetModeSat.style.background = 'transparent';
+        btnStreetModeSat.style.border = 'none';
       }
-
-      const lat = parseFloat(row['Latitude']);
-      const lon = parseFloat(row['Longitude']);
-
-      if (isNaN(lat) || isNaN(lon)) {
-        return alert(`Koordinat untuk ${sid} tidak valid atau kosong.`);
+    } else {
+      // Satellite / 3D mode
+      iframeStreetView.src = `https://maps.google.com/maps?q=${lat},${lon}&t=k&z=19&output=embed`;
+      if (btnStreetModePano && btnStreetModeSat) {
+        btnStreetModeSat.className = 'tbtn-p';
+        btnStreetModeSat.style.background = '';
+        btnStreetModeSat.style.border = '';
+        btnStreetModePano.className = 'tbtn';
+        btnStreetModePano.style.background = 'transparent';
+        btnStreetModePano.style.border = 'none';
       }
+    }
+  }
 
+  if (iframeStreetView) {
+    iframeStreetView.addEventListener('load', () => {
+      if (streetViewLoader) {
+        streetViewLoader.style.opacity = '0';
+        setTimeout(() => {
+          if (streetViewLoader.style.opacity === '0') {
+            streetViewLoader.style.display = 'none';
+          }
+        }, 300);
+      }
+    });
+  }
+
+  function openStreetViewModal(lat, lon, title) {
+    if (!modalStreetView) return;
+
+    currentStreetViewCoords = {
+      lat: parseFloat(lat),
+      lon: parseFloat(lon),
+      title: title || `${parseFloat(lat).toFixed(6)}, ${parseFloat(lon).toFixed(6)}`
+    };
+    currentStreetViewMode = 'pano';
+
+    if (streetViewTitle) streetViewTitle.textContent = currentStreetViewCoords.title;
+    if (streetViewCoords) streetViewCoords.textContent = `${currentStreetViewCoords.lat.toFixed(6)}, ${currentStreetViewCoords.lon.toFixed(6)}`;
+
+    updateStreetViewIframeSrc();
+
+    modalStreetView.classList.remove('hidden');
+    modalStreetView.style.display = 'flex';
+  }
+
+  function closeStreetViewModal() {
+    if (!modalStreetView) return;
+    modalStreetView.classList.add('hidden');
+    modalStreetView.style.display = 'none';
+    if (iframeStreetView) {
+      iframeStreetView.src = 'about:blank';
+    }
+  }
+
+  // Global access for map marker popups
+  window.openStreetViewPopup = (lat, lon, title) => {
+    openStreetViewModal(lat, lon, title);
+  };
+
+  if (btnStreetModePano) {
+    btnStreetModePano.addEventListener('click', () => {
+      if (currentStreetViewMode !== 'pano') {
+        currentStreetViewMode = 'pano';
+        updateStreetViewIframeSrc();
+      }
+    });
+  }
+
+  if (btnStreetModeSat) {
+    btnStreetModeSat.addEventListener('click', () => {
+      if (currentStreetViewMode !== 'sat') {
+        currentStreetViewMode = 'sat';
+        updateStreetViewIframeSrc();
+      }
+    });
+  }
+
+  if (btnStreetOpenBrowser) {
+    btnStreetOpenBrowser.addEventListener('click', async () => {
+      const { lat, lon } = currentStreetViewCoords;
+      if (!lat || !lon) return;
       const url = `http://maps.google.com/maps?q=&layer=c&cbll=${lat},${lon}`;
-      await invoke('open_url', { url });
+      try {
+        await invoke('open_url', { url });
+      } catch (err) {
+        alert("Gagal membuka browser: " + err);
+      }
+    });
+  }
 
-    } catch (e) {
-      alert(`Error: ${e}`);
+  if (btnCopyStreetCoords) {
+    btnCopyStreetCoords.addEventListener('click', () => {
+      const { lat, lon } = currentStreetViewCoords;
+      navigator.clipboard.writeText(`${lat}, ${lon}`);
+      const old = btnCopyStreetCoords.textContent;
+      btnCopyStreetCoords.textContent = '✓';
+      setTimeout(() => { if (btnCopyStreetCoords) btnCopyStreetCoords.textContent = old; }, 1500);
+    });
+  }
+
+  if (btnCloseStreetView) {
+    btnCloseStreetView.addEventListener('click', closeStreetViewModal);
+  }
+
+  if (modalStreetView) {
+    modalStreetView.addEventListener('click', (e) => {
+      if (e.target === modalStreetView) closeStreetViewModal();
+    });
+  }
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && modalStreetView && modalStreetView.style.display !== 'none' && !modalStreetView.classList.contains('hidden')) {
+      closeStreetViewModal();
     }
   });
+
+  if (btnMapStreet) {
+    btnMapStreet.addEventListener('click', async () => {
+      const val = mapSiteInput.value.trim();
+      if (!val) return alert('Masukkan Site ID atau Koordinat terlebih dahulu!');
+
+      try {
+        let lat = 0;
+        let lon = 0;
+        let title = val;
+
+        // 1. Check if it's a Coordinate "lat, lon"
+        const coordMatch = val.match(/^(-?\d+(\.\d+)?)\s*,\s*(-?\d+(\.\d+)?)$/);
+        if (coordMatch) {
+          lat = parseFloat(coordMatch[1]);
+          lon = parseFloat(coordMatch[3]);
+        } else {
+          // 2. Try looking up as Site ID
+          const row = await invoke('lookup_site', { siteId: val });
+          if (row) {
+            lat = parseFloat(row['Latitude']);
+            lon = parseFloat(row['Longitude']);
+            title = `${val} - ${row['Site Name'] || ''}`;
+          } else {
+            // 3. Fallback to geocoding
+            const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(val)}`);
+            const data = await res.json();
+            if (data && data.length > 0) {
+              lat = parseFloat(data[0].lat);
+              lon = parseFloat(data[0].lon);
+              title = data[0].display_name;
+            } else {
+              return alert(`'${val}' tidak ditemukan sebagai Site ID, Koordinat, maupun Alamat.`);
+            }
+          }
+        }
+
+        if (isNaN(lat) || isNaN(lon) || lat === 0) {
+          return alert(`Koordinat untuk '${val}' tidak valid atau kosong.`);
+        }
+
+        openStreetViewModal(lat, lon, title);
+      } catch (e) {
+        alert(`Error: ${e}`);
+      }
+    });
+  }
 
   const btnMapScreenshot = document.getElementById('btn-map-screenshot');
   if (btnMapScreenshot) {
@@ -2623,7 +2932,7 @@ if (btnMapSearch) {
 
       const oldText = btnMapScreenshot.innerHTML;
       btnMapScreenshot.disabled = true;
-      btnMapScreenshot.innerHTML = '⏳ Capturing...';
+      btnMapScreenshot.innerHTML = 'Capturing...';
 
       let clone = null;
 
@@ -2825,7 +3134,7 @@ if (btnCheckUpdate) {
       console.error(e);
     } finally {
       btnCheckUpdate.disabled = false;
-      btnCheckUpdate.textContent = "🔍 Cek Update Sekarang";
+      btnCheckUpdate.textContent = "Cek Update Sekarang";
     }
   });
 }
@@ -3814,7 +4123,7 @@ function renderWaTeContactsTable(filterText = "") {
       <td><input type="text" class="fi wa-te-edit-cluster" value="${c.cluster || ''}" style="background:transparent; border:none; color:var(--txt-1); width:100%;"></td>
       <td><input type="text" class="fi wa-te-edit-phone" value="${c.phone || ''}" style="background:transparent; border:none; color:var(--txt-1); width:100%;"></td>
       <td class="text-center">
-        <button class="tbtn-clr btn-wa-te-delete" style="padding:2px 8px; font-size:11px; background:var(--red-d); color:var(--red); border-color:rgba(255,79,94,0.2);">✕ Hapus</button>
+        <button class="tbtn-clr btn-wa-te-delete" style="padding:2px 8px; font-size:11px; background:var(--red-d); color:var(--red); border-color:rgba(255,79,94,0.2);">Hapus</button>
       </td>
     `;
 
@@ -3919,7 +4228,7 @@ if (btnWaTeSave) {
       alert("Gagal menyimpan kontak: " + e);
     } finally {
       btnWaTeSave.disabled = false;
-      btnWaTeSave.textContent = "💾 Simpan Perubahan";
+      btnWaTeSave.textContent = "Simpan Perubahan";
     }
   });
 }
@@ -3954,6 +4263,1001 @@ if (btnWaTeImport) {
     }
   });
 }
+
+// Helper for syncing TE contact when editing a site in Database Lookup
+async function syncTeContactFromSite(editData) {
+  if (!editData || !editData.te_name) return;
+  const teName = editData.te_name.trim();
+  const tePhone = (editData.te_phone || "").trim();
+  const cluster = (editData.cluster || editData.fm_office || "").trim();
+
+  if (!teName || !tePhone) return;
+
+  const existing = savedWaTeContacts.find(c =>
+    (c.name || "").trim().toUpperCase() === teName.toUpperCase() &&
+    (c.cluster || "").trim().toUpperCase() === cluster.toUpperCase()
+  );
+
+  if (existing) {
+    existing.phone = tePhone;
+  } else {
+    savedWaTeContacts.push({ name: teName, cluster, phone: tePhone });
+  }
+
+  try {
+    await invoke('save_wa_te_contacts', { contacts: savedWaTeContacts });
+    updateContactDashboardCards();
+    if (typeof renderWaTeContactsTable === 'function') {
+      renderWaTeContactsTable(typeof waTeSearch !== 'undefined' && waTeSearch ? waTeSearch.value : "");
+    }
+  } catch (e) {
+    console.warn("Auto-sync TE contact failed:", e);
+  }
+}
+
+// ==========================================
+// HANDOVER / PERGANTIAN TE MASSAL
+// ==========================================
+const btnDashHandoverTe = document.getElementById('btn-dash-handover-te');
+const btnWaTeHandover = document.getElementById('btn-wa-te-handover');
+const modalHandoverTe = document.getElementById('modal-handover-te');
+const btnCloseHandoverX = document.getElementById('btn-close-handover-x');
+const btnCancelHandover = document.getElementById('btn-cancel-handover');
+const btnExecuteHandover = document.getElementById('btn-execute-handover');
+const selHandoverOldTe = document.getElementById('sel-handover-old-te');
+const inpHandoverNewTe = document.getElementById('inp-handover-new-te');
+const inpHandoverNewPhone = document.getElementById('inp-handover-new-phone');
+const selHandoverCluster = document.getElementById('sel-handover-cluster');
+const handoverSummaryBox = document.getElementById('handover-summary-box');
+
+function openHandoverTeModal() {
+  if (!modalHandoverTe || !selHandoverOldTe) return;
+
+  // Gather all unique TE names from savedWaTeContacts, statusData, and pivotData
+  const namesSet = new Set();
+  (savedWaTeContacts || []).forEach(c => {
+    const n = (c.name || "").trim();
+    if (n && !n.startsWith("[") && n.toUpperCase() !== "UNKNOWN TE") namesSet.add(n);
+  });
+
+  if (typeof statusData !== 'undefined' && statusData) {
+    statusData.forEach(s => {
+      const n = (s.pic || "").trim();
+      if (n && !n.startsWith("[") && n.toUpperCase() !== "UNKNOWN TE" && n !== "—" && n !== "0") namesSet.add(n);
+    });
+  }
+
+  const sortedNames = Array.from(namesSet).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+
+  selHandoverOldTe.innerHTML = '<option value="">-- Pilih TE Lama yang Diganti --</option>';
+  sortedNames.forEach(n => {
+    const opt = document.createElement('option');
+    opt.value = n;
+    opt.textContent = n;
+    selHandoverOldTe.appendChild(opt);
+  });
+
+  inpHandoverNewTe.value = '';
+  inpHandoverNewPhone.value = '';
+  selHandoverCluster.innerHTML = '<option value="ALL">Semua Cluster (Global Reassign)</option>';
+  handoverSummaryBox.textContent = 'Pilih TE lama untuk melihat estimasi site yang terdampak.';
+
+  modalHandoverTe.classList.remove('hidden');
+  modalHandoverTe.style.display = 'flex';
+}
+
+function closeHandoverTeModal() {
+  if (!modalHandoverTe) return;
+  modalHandoverTe.classList.add('hidden');
+  modalHandoverTe.style.display = 'none';
+}
+
+if (btnDashHandoverTe) btnDashHandoverTe.addEventListener('click', openHandoverTeModal);
+if (btnWaTeHandover) btnWaTeHandover.addEventListener('click', openHandoverTeModal);
+if (btnCloseHandoverX) btnCloseHandoverX.addEventListener('click', closeHandoverTeModal);
+if (btnCancelHandover) btnCancelHandover.addEventListener('click', closeHandoverTeModal);
+
+if (selHandoverOldTe) {
+  selHandoverOldTe.addEventListener('change', () => {
+    const oldName = selHandoverOldTe.value;
+    if (!oldName) {
+      selHandoverCluster.innerHTML = '<option value="ALL">Semua Cluster (Global Reassign)</option>';
+      handoverSummaryBox.textContent = 'Pilih TE lama untuk melihat estimasi site yang terdampak.';
+      return;
+    }
+
+    // Find clusters associated with this TE
+    const clustersSet = new Set();
+    let contactPhone = "";
+
+    (savedWaTeContacts || []).forEach(c => {
+      if ((c.name || "").trim().toUpperCase() === oldName.toUpperCase()) {
+        if (c.cluster) clustersSet.add(c.cluster.trim());
+        if (!contactPhone && c.phone) contactPhone = c.phone.trim();
+      }
+    });
+
+    let siteCount = 0;
+    if (typeof statusData !== 'undefined' && statusData) {
+      statusData.forEach(s => {
+        if ((s.pic || "").trim().toUpperCase() === oldName.toUpperCase()) {
+          siteCount++;
+          if (s.cluster) clustersSet.add(s.cluster.trim());
+        }
+      });
+    }
+
+    selHandoverCluster.innerHTML = '<option value="ALL">Semua Cluster (Global Reassign)</option>';
+    Array.from(clustersSet).sort().forEach(cl => {
+      const opt = document.createElement('option');
+      opt.value = cl;
+      opt.textContent = `Cluster: ${cl}`;
+      selHandoverCluster.appendChild(opt);
+    });
+
+    handoverSummaryBox.innerHTML = `
+      <strong>Terpilih:</strong> ${oldName}<br>
+      • Kontak WA terdaftar: <b>${clustersSet.size || 1} cluster</b> ${contactPhone ? `(No lama: ${contactPhone})` : ''}<br>
+      • Site aktif di memory: <b>${siteCount} site</b>
+    `;
+  });
+}
+
+if (btnExecuteHandover) {
+  btnExecuteHandover.addEventListener('click', async () => {
+    const oldTeName = selHandoverOldTe.value;
+    const newTeName = inpHandoverNewTe.value.trim();
+    const newTePhone = inpHandoverNewPhone.value.trim();
+    const targetCluster = selHandoverCluster.value;
+
+    if (!oldTeName) {
+      alert("Harap pilih TE lama yang akan diganti.");
+      return;
+    }
+    if (!newTeName) {
+      alert("Harap masukkan nama TE baru.");
+      return;
+    }
+
+    const confirmMsg = `Konfirmasi Pergantian TE:\n\n` +
+      `• TE Lama: ${oldTeName}\n` +
+      `• TE Baru: ${newTeName}\n` +
+      `• Nomor WA Baru: ${newTePhone || '(tidak diubah)'}\n` +
+      `• Cakupan: ${targetCluster === 'ALL' ? 'Semua Cluster' : targetCluster}\n\n` +
+      `Lanjutkan proses handover?`;
+
+    if (!confirm(confirmMsg)) return;
+
+    btnExecuteHandover.disabled = true;
+    btnExecuteHandover.textContent = "⏳ Memproses Handover...";
+
+    try {
+      const res = await invoke('reassign_te_db', {
+        oldTeName,
+        newTeName,
+        newTePhone,
+        targetCluster: targetCluster === 'ALL' ? null : targetCluster
+      });
+
+      // User requirement: JSON also saves changes from Handover TE
+      if (typeof SiteChangesManager !== 'undefined' && res && res.reassigned_sites && Array.isArray(res.reassigned_sites)) {
+        SiteChangesManager.recordBulkHandover(
+          res.reassigned_sites,
+          `Handover TE Massal: ${oldTeName} ➔ ${newTeName} (${targetCluster === 'ALL' ? 'Semua Cluster' : targetCluster})`
+        );
+      }
+
+      // Update in-memory statusData if present
+      if (typeof statusData !== 'undefined' && statusData) {
+        statusData.forEach(s => {
+          if ((s.pic || "").trim().toUpperCase() === oldTeName.toUpperCase()) {
+            if (targetCluster === 'ALL' || (s.cluster || "").trim().toUpperCase() === targetCluster.toUpperCase()) {
+              s.pic = newTeName;
+              if (newTePhone) s.te_phone = newTePhone;
+            }
+          }
+        });
+        if (typeof renderPmCards === 'function') renderPmCards();
+        if (typeof renderFilterSiteTables === 'function') renderFilterSiteTables();
+      }
+
+      // Reload contacts
+      await loadWaTeContacts();
+      if (typeof renderWaTeContactsTable === 'function') {
+        renderWaTeContactsTable(typeof waTeSearch !== 'undefined' && waTeSearch ? waTeSearch.value : "");
+      }
+      updateContactDashboardCards();
+
+      closeHandoverTeModal();
+
+      alert(`✅ Handover TE Berhasil!\n\n` +
+        `• ${res.updated_sites || 0} site di database aktif ter-update.\n` +
+        `• ${res.updated_contacts || 0} kontak WhatsApp ter-update.\n` +
+        `Semua site '${oldTeName}' kini dialihkan ke '${newTeName}'.`);
+
+    } catch (err) {
+      alert("Gagal melakukan handover TE: " + err);
+    } finally {
+      btnExecuteHandover.disabled = false;
+      btnExecuteHandover.textContent = "Terapkan Pergantian";
+    }
+  });
+}
+
+// ==========================================
+// SITE CHANGES & OVERRIDES MANAGER (.JSON)
+// ==========================================
+const SiteChangesManager = {
+  siteOverrides: {}, // Key: uppercase site_id -> { site_id, site_name, cluster, te_name, te_phone, old_te, old_phone, note, updated_at, fields }
+  handoverHistory: [], // Array of { id, site_id, site_name, cluster, old_te, old_phone, new_te, new_phone, note, timestamp }
+  lastLoadedFileName: "",
+
+  init() {
+    try {
+      const saved = localStorage.getItem('cjhelper_site_changes_autosave');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.overrides && typeof parsed.overrides === 'object') {
+          this.siteOverrides = parsed.overrides;
+        }
+        if (Array.isArray(parsed.handovers)) {
+          this.handoverHistory = parsed.handovers;
+        }
+      }
+    } catch (e) {
+      console.warn("Gagal membaca autosave perubahan site:", e);
+    }
+    this.updateDashboardBadge();
+    this.renderHistoryTable();
+  },
+
+  persistAutosave() {
+    try {
+      localStorage.setItem('cjhelper_site_changes_autosave', JSON.stringify({
+        updated_at: new Date().toISOString(),
+        overrides: this.siteOverrides,
+        handovers: this.handoverHistory
+      }));
+    } catch (e) {
+      console.warn("Gagal menyimpan autosave:", e);
+    }
+  },
+
+  recordHandover(record) {
+    if (!record || !record.site_id) return;
+    const sid = record.site_id.trim().toUpperCase();
+
+    // Add or update override
+    this.siteOverrides[sid] = {
+      site_id: sid,
+      site_name: record.site_name || (this.siteOverrides[sid] && this.siteOverrides[sid].site_name) || "",
+      cluster: record.cluster || (this.siteOverrides[sid] && this.siteOverrides[sid].cluster) || "",
+      te_name: record.new_te || "",
+      te_phone: record.new_phone || "",
+      old_te: record.old_te || "",
+      old_phone: record.old_phone || "",
+      note: record.note || "",
+      updated_at: new Date().toISOString()
+    };
+
+    // Prepend to history log
+    this.handoverHistory.unshift({
+      id: "ho_" + Date.now() + "_" + Math.floor(Math.random() * 1000),
+      site_id: sid,
+      site_name: record.site_name || "",
+      cluster: record.cluster || "",
+      old_te: record.old_te || "",
+      old_phone: record.old_phone || "",
+      new_te: record.new_te || "",
+      new_phone: record.new_phone || "",
+      note: record.note || "",
+      timestamp: record.timestamp || new Date().toLocaleString()
+    });
+
+    this.persistAutosave();
+    this.syncActiveStatusData(sid, record.new_te, record.new_phone);
+    this.updateDashboardBadge();
+    this.renderHistoryTable();
+  },
+
+  recordBulkHandover(records, bulkNote = "Handover TE Massal") {
+    if (!Array.isArray(records) || records.length === 0) return;
+    const now = new Date().toLocaleString();
+
+    records.forEach(r => {
+      const sid = (r.site_id || "").trim().toUpperCase();
+      if (!sid) return;
+
+      this.siteOverrides[sid] = {
+        site_id: sid,
+        site_name: r.site_name || (this.siteOverrides[sid] && this.siteOverrides[sid].site_name) || "",
+        cluster: r.cluster || (this.siteOverrides[sid] && this.siteOverrides[sid].cluster) || "",
+        te_name: r.new_te || "",
+        te_phone: r.new_te_phone || "",
+        old_te: r.old_te || "",
+        old_phone: r.old_te_phone || "",
+        note: bulkNote,
+        updated_at: new Date().toISOString()
+      };
+
+      this.handoverHistory.unshift({
+        id: "ho_" + Date.now() + "_" + Math.floor(Math.random() * 1000),
+        site_id: sid,
+        site_name: r.site_name || "",
+        cluster: r.cluster || "",
+        old_te: r.old_te || "",
+        old_phone: r.old_te_phone || "",
+        new_te: r.new_te || "",
+        new_phone: r.new_te_phone || "",
+        note: bulkNote,
+        timestamp: now
+      });
+
+      this.syncActiveStatusData(sid, r.new_te, r.new_te_phone);
+    });
+
+    this.persistAutosave();
+    this.updateDashboardBadge();
+    this.renderHistoryTable();
+  },
+
+  recordSiteEdit(siteId, editData) {
+    if (!siteId) return;
+    const sid = siteId.trim().toUpperCase();
+    const existing = this.siteOverrides[sid] || {};
+
+    this.siteOverrides[sid] = {
+      site_id: sid,
+      site_name: editData.site_name || existing.site_name || "",
+      cluster: editData.cluster || existing.cluster || "",
+      te_name: editData.te_name || existing.te_name || "",
+      te_phone: editData.te_phone || existing.te_phone || "",
+      old_te: existing.old_te || "",
+      old_phone: existing.old_phone || "",
+      note: "Edit Database Form",
+      updated_at: new Date().toISOString(),
+      fields: {
+        ...(existing.fields || {}),
+        SITE_NAME: editData.site_name,
+        MC: editData.cluster,
+        VENDOR: editData.vendor,
+        TE_NAME: editData.te_name,
+        TE_PHONE: editData.te_phone,
+        TE_EMAIL: editData.te_email,
+        CME_NAME: editData.cme_name,
+        CME_PHONE: editData.cme_phone,
+        CME_EMAIL: editData.cme_email,
+        FM_OFFICE: editData.fm_office,
+        HOST_NAME: editData.host_name,
+        TLP: editData.tlp
+      }
+    };
+
+    this.persistAutosave();
+    if (editData.te_name) {
+      this.syncActiveStatusData(sid, editData.te_name, editData.te_phone);
+    }
+    this.updateDashboardBadge();
+    this.renderHistoryTable();
+  },
+
+  syncActiveStatusData(siteId, newTe, newPhone) {
+    if (typeof statusData !== 'undefined' && Array.isArray(statusData)) {
+      let modified = false;
+      statusData.forEach(s => {
+        if ((s.new_site || "").trim().toUpperCase() === siteId) {
+          if (newTe) s.pic = newTe;
+          if (newPhone) s.te_phone = newPhone;
+          modified = true;
+        }
+      });
+      if (modified) {
+        if (typeof renderStatus === 'function') renderStatus();
+        if (typeof renderPmCards === 'function') renderPmCards();
+        if (typeof renderFilterSiteTables === 'function') renderFilterSiteTables();
+      }
+    }
+  },
+
+  async applyToMemory(silent = false, isAutoOnLoad = false) {
+    const total = Object.keys(this.siteOverrides).length;
+    if (total === 0) {
+      if (!silent) alert("Belum ada data perubahan site yang tersimpan.");
+      return;
+    }
+
+    try {
+      const res = await invoke('apply_site_changes', {
+        changes: { overrides: this.siteOverrides }
+      });
+
+      // Update in-memory statusData
+      Object.keys(this.siteOverrides).forEach(sid => {
+        const ov = this.siteOverrides[sid];
+        this.syncActiveStatusData(sid, ov.te_name, ov.te_phone);
+      });
+
+      this.updateDashboardBadge();
+      this.renderHistoryTable();
+
+      const applied = res.applied_count || 0;
+      const notFound = res.not_found ? res.not_found.length : 0;
+
+      if (!silent) {
+        let msg = `✅ Berhasil menerapkan ${applied} perubahan site ke memory!`;
+        if (notFound > 0) {
+          msg += `\n⚠️ ${notFound} site tidak ditemukan di Master DB (mungkin beda database).`;
+        }
+        alert(msg);
+      } else if (isAutoOnLoad && applied > 0) {
+        console.log(`[Auto-Apply] ${applied} perubahan site otomatis diterapkan dari perubahan tersimpan.`);
+      }
+    } catch (err) {
+      if (!silent) {
+        alert("Gagal menerapkan perubahan ke database: " + err);
+      } else {
+        console.warn("Gagal auto-apply perubahan site:", err);
+      }
+    }
+  },
+
+  async saveToJsonFile() {
+    const count = Object.keys(this.siteOverrides).length;
+    if (count === 0 && this.handoverHistory.length === 0) {
+      alert("Belum ada data site yang diubah. Lakukan Handover Site / BTS atau Edit Database terlebih dahulu.");
+      return;
+    }
+
+    const payload = {
+      app: "CJHelper",
+      schema_version: 1,
+      exported_at: new Date().toISOString(),
+      stats: {
+        total_modified_sites: count,
+        total_handover_logs: this.handoverHistory.length
+      },
+      handovers: this.handoverHistory,
+      overrides: this.siteOverrides
+    };
+
+    const jsonStr = JSON.stringify(payload, null, 2);
+    const dateStr = new Date().toISOString().slice(0, 10);
+    const defaultName = `cjhelper_site_changes_${dateStr}.json`;
+
+    try {
+      const savedPath = await invoke('save_changes_json_file', {
+        jsonContent: jsonStr,
+        defaultFilename: defaultName
+      });
+
+      if (savedPath) {
+        const fName = savedPath.split(/[\\/]/).pop();
+        this.lastLoadedFileName = fName;
+        this.updateDashboardBadge();
+        alert(`✅ Berhasil menyimpan file perubahan:\n${savedPath}\n\nTotal: ${count} site tersimpan.`);
+      }
+    } catch (err) {
+      alert("Gagal menyimpan file .json: " + err);
+    }
+  },
+
+  async loadFromJsonFile() {
+    try {
+      const selectedPath = await invoke('pick_json_file');
+      if (!selectedPath) return;
+
+      const fName = selectedPath.split(/[\\/]/).pop();
+      const content = await invoke('read_json_file', { path: selectedPath });
+      const parsed = JSON.parse(content);
+
+      if (!parsed || (typeof parsed !== 'object')) {
+        throw new Error("Format file JSON tidak valid.");
+      }
+
+      let loadedOverrides = {};
+      let loadedHandovers = [];
+
+      if (parsed.overrides && typeof parsed.overrides === 'object') {
+        loadedOverrides = parsed.overrides;
+      } else if (parsed.site_overrides && typeof parsed.site_overrides === 'object') {
+        loadedOverrides = parsed.site_overrides;
+      } else if (!parsed.handovers && typeof parsed === 'object') {
+        loadedOverrides = parsed;
+      }
+
+      if (Array.isArray(parsed.handovers)) {
+        loadedHandovers = parsed.handovers;
+      } else if (Array.isArray(parsed.handover_records)) {
+        loadedHandovers = parsed.handover_records;
+      }
+
+      // Merge into active state
+      Object.keys(loadedOverrides).forEach(sid => {
+        const norm = sid.trim().toUpperCase();
+        this.siteOverrides[norm] = loadedOverrides[sid];
+      });
+
+      // Merge handovers
+      const existingIds = new Set(this.handoverHistory.map(h => h.id || h.site_id + h.timestamp));
+      loadedHandovers.forEach(h => {
+        const idKey = h.id || (h.site_id + h.timestamp);
+        if (!existingIds.has(idKey)) {
+          this.handoverHistory.push(h);
+        }
+      });
+
+      this.lastLoadedFileName = fName;
+      this.persistAutosave();
+
+      // Apply to memory
+      await this.applyToMemory(false);
+
+    } catch (err) {
+      alert("Gagal memuat file .json: " + err);
+    }
+  },
+
+  revertOverride(siteId) {
+    if (!siteId) return;
+    const sid = siteId.trim().toUpperCase();
+    if (!confirm(`Batalkan perubahan untuk site ${sid}? Site akan kembali ke data Master DB saat di-reload.`)) return;
+
+    delete this.siteOverrides[sid];
+    this.handoverHistory = this.handoverHistory.filter(h => (h.site_id || "").trim().toUpperCase() !== sid);
+
+    this.persistAutosave();
+    this.updateDashboardBadge();
+    this.renderHistoryTable();
+
+    alert(`Perubahan untuk site ${sid} telah dihapus dari daftar override.`);
+  },
+
+  resetAll() {
+    const total = Object.keys(this.siteOverrides).length;
+    if (total === 0) {
+      alert("Tidak ada perubahan yang aktif.");
+      return;
+    }
+
+    if (!confirm(`Apakah Anda yakin ingin menghapus SEMUA (${total}) perubahan site yang tersimpan?`)) return;
+
+    this.siteOverrides = {};
+    this.handoverHistory = [];
+    this.lastLoadedFileName = "";
+    localStorage.removeItem('cjhelper_site_changes_autosave');
+
+    this.updateDashboardBadge();
+    this.renderHistoryTable();
+    alert("Seluruh data perubahan site berhasil direset.");
+  },
+
+  updateDashboardBadge() {
+    const count = Object.keys(this.siteOverrides).length;
+    const countEl = document.getElementById('dash-changes-count');
+    const fileEl = document.getElementById('lbl-dash-changes-filename');
+    const badgeEl = document.getElementById('hos-history-badge');
+
+    if (countEl) countEl.textContent = count;
+    if (fileEl) {
+      if (this.lastLoadedFileName) {
+        fileEl.textContent = `📁 ${this.lastLoadedFileName}`;
+        fileEl.style.color = "var(--grn)";
+        fileEl.title = `${this.lastLoadedFileName} (${count} site)`;
+      } else if (count > 0) {
+        fileEl.textContent = `${count} site diubah`;
+        fileEl.style.color = "#c084fc";
+        fileEl.title = `${count} site diubah di sesi ini`;
+      } else {
+        fileEl.textContent = "0 diubah";
+        fileEl.style.color = "var(--txt-3)";
+        fileEl.title = "Belum ada site diubah";
+      }
+    }
+    if (badgeEl) badgeEl.textContent = `${count} site`;
+  },
+
+  renderHistoryTable(filterText = "") {
+    const tbody = document.getElementById('hos-history-tbody');
+    if (!tbody) return;
+
+    const term = (filterText || "").toLowerCase().trim();
+    const records = this.handoverHistory.filter(h => {
+      if (!term) return true;
+      return (h.site_id || "").toLowerCase().includes(term) ||
+             (h.site_name || "").toLowerCase().includes(term) ||
+             (h.new_te || "").toLowerCase().includes(term) ||
+             (h.old_te || "").toLowerCase().includes(term) ||
+             (h.cluster || "").toLowerCase().includes(term);
+    });
+
+    if (records.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="7" class="text-center text-subtle py-4" style="color:var(--txt-3);padding:14px;text-align:center;">
+        ${term ? 'Tidak ada riwayat perubahan yang cocok dengan pencarian.' : 'Belum ada site yang diubah di sesi ini.'}
+      </td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = records.map(r => `
+      <tr style="border-bottom:1px solid var(--bdr);">
+        <td style="padding:6px 8px;font-weight:700;color:var(--txt-1);">${r.site_id || '—'}</td>
+        <td style="padding:6px 8px;color:var(--txt-2);">${r.site_name || '—'}</td>
+        <td style="padding:6px 8px;color:var(--txt-2);">${r.cluster || '—'}</td>
+        <td style="padding:6px 8px;color:var(--amb);">${r.old_te || '—'}</td>
+        <td style="padding:6px 8px;font-weight:600;color:#c084fc;">
+          ${r.new_te || '—'} ${r.new_phone ? `<span style="font-size:10px;color:var(--txt-3);font-weight:normal;">(${r.new_phone})</span>` : ''}
+        </td>
+        <td style="padding:6px 8px;font-size:10px;color:var(--txt-3);">
+          ${r.timestamp || '—'}
+          ${r.note ? `<div style="color:var(--txt-2);font-style:italic;">${r.note}</div>` : ''}
+        </td>
+        <td style="padding:6px 8px;text-align:center;">
+          <button class="tbtn-clr btn-hos-revert-row" data-site="${r.site_id}" style="padding:2px 6px;font-size:10px;color:var(--red);border-color:rgba(239,68,68,0.3);" title="Hapus override site ini">
+            Revert
+          </button>
+        </td>
+      </tr>
+    `).join('');
+
+    tbody.querySelectorAll('.btn-hos-revert-row').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const sid = e.currentTarget.dataset.site;
+        SiteChangesManager.revertOverride(sid);
+      });
+    });
+  }
+};
+
+// ==========================================
+// MODAL HANDOVER NEW SITE / BTS CONTROLLER
+// ==========================================
+const modalHandoverSite = document.getElementById('modal-handover-site');
+const btnCloseHandoverSiteX = document.getElementById('btn-close-handover-site-x');
+const btnCloseHandoverSite = document.getElementById('btn-close-handover-site');
+const btnDashHandoverSite = document.getElementById('btn-dash-handover-site');
+const dashChangesCard = document.getElementById('dash-changes-card');
+const btnDbLookupHandover = document.getElementById('btn-db-lookup-handover');
+
+const hosTabSingle = document.getElementById('hos-tab-single');
+const hosTabBatch = document.getElementById('hos-tab-batch');
+const hosPaneSingle = document.getElementById('hos-pane-single');
+const hosPaneBatch = document.getElementById('hos-pane-batch');
+
+const inpHosSearchSite = document.getElementById('inp-hos-search-site');
+const btnHosCheckSite = document.getElementById('btn-hos-check-site');
+const btnHosClearSite = document.getElementById('btn-hos-clear-site');
+
+const hosPrevSiteName = document.getElementById('hos-prev-site-name');
+const hosPrevSiteId = document.getElementById('hos-prev-site-id');
+const hosPrevCluster = document.getElementById('hos-prev-cluster');
+const hosPrevOldTe = document.getElementById('hos-prev-old-te');
+const hosPrevOldPhone = document.getElementById('hos-prev-old-phone');
+
+const inpHosBatchSites = document.getElementById('inp-hos-batch-sites');
+const btnHosBatchValidate = document.getElementById('btn-hos-batch-validate');
+const hosBatchCountInfo = document.getElementById('hos-batch-count-info');
+
+const selHosNewTe = document.getElementById('sel-hos-new-te');
+const inpHosNewTe = document.getElementById('inp-hos-new-te');
+const inpHosNewPhone = document.getElementById('inp-hos-new-phone');
+const inpHosNote = document.getElementById('inp-hos-note');
+const btnExecuteHandoverSite = document.getElementById('btn-execute-handover-site');
+
+const inpHosFilterHistory = document.getElementById('inp-hos-filter-history');
+const btnHosLoadJson = document.getElementById('btn-hos-load-json');
+const btnHosSaveJson = document.getElementById('btn-hos-save-json');
+const btnHosResetAll = document.getElementById('btn-hos-reset-all');
+
+const btnDashLoadJson = document.getElementById('btn-dash-load-json');
+const btnDashSaveJson = document.getElementById('btn-dash-save-json');
+const btnDbeLoadJson = document.getElementById('btn-dbe-load-json');
+const btnDbeSaveJson = document.getElementById('btn-dbe-save-json');
+
+let currentActiveSiteData = null;
+let currentHosMode = 'single'; // 'single' or 'batch'
+
+function openHandoverSiteModal(prefilledSiteId = "") {
+  if (!modalHandoverSite) return;
+
+  // Populate TE dropdown from savedWaTeContacts
+  if (selHosNewTe) {
+    selHosNewTe.innerHTML = '<option value="">-- Pilih TE Terdaftar --</option>';
+    const teMap = new Map();
+    (savedWaTeContacts || []).forEach(c => {
+      const name = (c.name || "").trim();
+      if (name && !name.startsWith("[") && name.toUpperCase() !== "UNKNOWN TE") {
+        if (!teMap.has(name.toUpperCase())) {
+          teMap.set(name.toUpperCase(), c);
+        }
+      }
+    });
+
+    Array.from(teMap.values()).sort((a, b) => a.name.localeCompare(b.name)).forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c.name;
+      opt.textContent = `${c.name} ${c.cluster ? `(${c.cluster})` : ''}`;
+      opt.dataset.phone = c.phone || '';
+      selHosNewTe.appendChild(opt);
+    });
+  }
+
+  // Reset inputs
+  if (inpHosNewTe) inpHosNewTe.value = '';
+  if (inpHosNewPhone) inpHosNewPhone.value = '';
+  if (inpHosNote) inpHosNote.value = '';
+
+  // Switch to single mode by default
+  switchHosMode('single');
+
+  if (prefilledSiteId) {
+    if (inpHosSearchSite) {
+      inpHosSearchSite.value = prefilledSiteId;
+      searchSiteForHandover(prefilledSiteId);
+    }
+  }
+
+  SiteChangesManager.renderHistoryTable();
+  modalHandoverSite.classList.remove('hidden');
+  modalHandoverSite.style.display = 'flex';
+}
+
+function closeHandoverSiteModal() {
+  if (!modalHandoverSite) return;
+  modalHandoverSite.classList.add('hidden');
+  modalHandoverSite.style.display = 'none';
+}
+
+function switchHosMode(mode) {
+  currentHosMode = mode;
+  if (mode === 'single') {
+    if (hosTabSingle) hosTabSingle.classList.add('active');
+    if (hosTabBatch) hosTabBatch.classList.remove('active');
+    if (hosPaneSingle) hosPaneSingle.style.display = 'flex';
+    if (hosPaneBatch) hosPaneBatch.style.display = 'none';
+  } else {
+    if (hosTabSingle) hosTabSingle.classList.remove('active');
+    if (hosTabBatch) hosTabBatch.classList.add('active');
+    if (hosPaneSingle) hosPaneSingle.style.display = 'none';
+    if (hosPaneBatch) hosPaneBatch.style.display = 'flex';
+  }
+}
+
+async function searchSiteForHandover(siteId) {
+  const sid = (siteId || (inpHosSearchSite ? inpHosSearchSite.value : "")).trim().toUpperCase();
+  if (!sid) {
+    alert("Harap masukkan Site ID terlebih dahulu.");
+    return;
+  }
+
+  try {
+    const res = await invoke('lookup_site', { siteId: sid });
+    if (!res) {
+      alert(`Site ID '${sid}' tidak ditemukan di Master Database.`);
+      clearSitePreview();
+      return;
+    }
+
+    currentActiveSiteData = res;
+    if (hosPrevSiteName) hosPrevSiteName.textContent = res["Site Name"] || "—";
+    if (hosPrevSiteId) hosPrevSiteId.textContent = `New ID: ${res["Site ID (New)"] || sid} | Old: ${res["Old Site ID"] || '—'}`;
+    if (hosPrevCluster) hosPrevCluster.textContent = res["Cluster (MC)"] || res["FM Office"] || "—";
+    if (hosPrevOldTe) hosPrevOldTe.textContent = res["TE Name"] || "(Belum ditentukan)";
+    if (hosPrevOldPhone) hosPrevOldPhone.textContent = res["TE Phone"] || "—";
+
+  } catch (err) {
+    alert("Gagal mencari site di database: " + err);
+    clearSitePreview();
+  }
+}
+
+function clearSitePreview() {
+  currentActiveSiteData = null;
+  if (inpHosSearchSite) inpHosSearchSite.value = '';
+  if (hosPrevSiteName) hosPrevSiteName.textContent = "Belum dipilih";
+  if (hosPrevSiteId) hosPrevSiteId.textContent = "—";
+  if (hosPrevCluster) hosPrevCluster.textContent = "—";
+  if (hosPrevOldTe) hosPrevOldTe.textContent = "—";
+  if (hosPrevOldPhone) hosPrevOldPhone.textContent = "—";
+}
+
+// Event Listeners for Handover Site Modal
+if (btnDashHandoverSite) btnDashHandoverSite.addEventListener('click', () => openHandoverSiteModal());
+if (dashChangesCard) dashChangesCard.addEventListener('click', () => openHandoverSiteModal());
+if (btnDbLookupHandover) {
+  btnDbLookupHandover.addEventListener('click', () => {
+    const currentLookupId = (document.getElementById('db-f-site-id-new')?.textContent || document.getElementById('db-search-input')?.value || "").trim();
+    if (currentLookupId && currentLookupId !== '—') {
+      openHandoverSiteModal(currentLookupId);
+    } else {
+      openHandoverSiteModal();
+    }
+  });
+}
+
+if (btnCloseHandoverSiteX) btnCloseHandoverSiteX.addEventListener('click', closeHandoverSiteModal);
+if (btnCloseHandoverSite) btnCloseHandoverSite.addEventListener('click', closeHandoverSiteModal);
+
+if (hosTabSingle) hosTabSingle.addEventListener('click', () => switchHosMode('single'));
+if (hosTabBatch) hosTabBatch.addEventListener('click', () => switchHosMode('batch'));
+
+if (btnHosCheckSite) {
+  btnHosCheckSite.addEventListener('click', () => {
+    const val = inpHosSearchSite ? inpHosSearchSite.value.trim() : "";
+    searchSiteForHandover(val);
+  });
+}
+
+if (inpHosSearchSite) {
+  inpHosSearchSite.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      searchSiteForHandover(inpHosSearchSite.value.trim());
+    }
+  });
+}
+
+if (btnHosClearSite) btnHosClearSite.addEventListener('click', clearSitePreview);
+
+if (selHosNewTe) {
+  selHosNewTe.addEventListener('change', () => {
+    const selectedOpt = selHosNewTe.options[selHosNewTe.selectedIndex];
+    if (selectedOpt && selectedOpt.value) {
+      if (inpHosNewTe) inpHosNewTe.value = selectedOpt.value;
+      if (inpHosNewPhone) inpHosNewPhone.value = selectedOpt.dataset.phone || '';
+    }
+  });
+}
+
+if (inpHosBatchSites) {
+  inpHosBatchSites.addEventListener('input', () => {
+    const raw = inpHosBatchSites.value;
+    const ids = raw.split(/[\n,; \t]+/).map(s => s.trim().toUpperCase()).filter(s => s.length > 0);
+    if (hosBatchCountInfo) hosBatchCountInfo.textContent = `${ids.length} Site ID dimasukkan`;
+  });
+}
+
+if (btnHosBatchValidate) {
+  btnHosBatchValidate.addEventListener('click', async () => {
+    const raw = inpHosBatchSites ? inpHosBatchSites.value : "";
+    const ids = raw.split(/[\n,; \t]+/).map(s => s.trim().toUpperCase()).filter(s => s.length > 0);
+    if (ids.length === 0) {
+      alert("Masukkan minimal 1 Site ID di textarea terlebih dahulu.");
+      return;
+    }
+
+    let found = 0;
+    let notFound = 0;
+    for (const sid of ids) {
+      try {
+        const res = await invoke('lookup_site', { siteId: sid });
+        if (res) found++; else notFound++;
+      } catch (e) {
+        notFound++;
+      }
+    }
+    alert(`Hasil Validasi DB:\n• ${found} site terdaftar di Master DB.\n• ${notFound} site tidak ditemukan.`);
+    if (hosBatchCountInfo) hosBatchCountInfo.textContent = `${ids.length} Site ID (${found} valid di DB)`;
+  });
+}
+
+if (btnExecuteHandoverSite) {
+  btnExecuteHandoverSite.addEventListener('click', async () => {
+    let newTeName = (inpHosNewTe && inpHosNewTe.value.trim()) || (selHosNewTe && selHosNewTe.value.trim()) || "";
+    let newTePhone = inpHosNewPhone ? inpHosNewPhone.value.trim() : "";
+    const note = inpHosNote ? inpHosNote.value.trim() : "";
+
+    if (!newTeName) {
+      alert("Harap pilih atau ketik nama TE Baru penerima handover.");
+      return;
+    }
+
+    let targetSiteIds = [];
+
+    if (currentHosMode === 'single') {
+      if (!currentActiveSiteData) {
+        const typed = inpHosSearchSite ? inpHosSearchSite.value.trim().toUpperCase() : "";
+        if (!typed) {
+          alert("Harap cari dan pilih site yang akan di-handover terlebih dahulu.");
+          return;
+        }
+        await searchSiteForHandover(typed);
+        if (!currentActiveSiteData) return;
+      }
+      const sid = currentActiveSiteData["Site ID (New)"] || inpHosSearchSite.value.trim().toUpperCase();
+      targetSiteIds.push(sid);
+    } else {
+      const rawText = inpHosBatchSites ? inpHosBatchSites.value : "";
+      targetSiteIds = rawText.split(/[\n,; \t]+/)
+        .map(s => s.trim().toUpperCase())
+        .filter(s => s.length > 0);
+
+      if (targetSiteIds.length === 0) {
+        alert("Harap masukkan minimal 1 Site ID di textarea batch.");
+        return;
+      }
+    }
+
+    const confirmMsg = `Konfirmasi Handover Site / BTS:\n\n` +
+      `• Jumlah Site: ${targetSiteIds.length} site\n` +
+      `• Target TE Baru: ${newTeName}\n` +
+      `• Nomor WA: ${newTePhone || '(tidak diisi)'}\n` +
+      `• Catatan: ${note || '-'}\n\n` +
+      `Lanjutkan proses handover?`;
+
+    if (!confirm(confirmMsg)) return;
+
+    btnExecuteHandoverSite.disabled = true;
+    btnExecuteHandoverSite.textContent = "⏳ Memproses...";
+
+    try {
+      const res = await invoke('handover_sites_batch', {
+        siteIds: targetSiteIds,
+        newTeName: newTeName,
+        newTePhone: newTePhone,
+        note: note ? note : null
+      });
+
+      const records = res.records || [];
+      const successes = records.filter(r => r.success);
+      const fails = records.filter(r => !r.success);
+
+      successes.forEach(r => {
+        SiteChangesManager.recordHandover({
+          site_id: r.site_id,
+          site_name: r.site_name,
+          cluster: r.cluster,
+          old_te: r.old_te,
+          old_phone: r.old_phone,
+          new_te: r.new_te,
+          new_phone: r.new_phone,
+          note: r.note,
+          timestamp: r.timestamp
+        });
+      });
+
+      let alertMsg = `✅ Handover Berhasil!\n\n` +
+        `• ${successes.length} site berhasil dialihkan ke ${newTeName}.\n`;
+
+      if (fails.length > 0) {
+        alertMsg += `⚠️ ${fails.length} site gagal (tidak ditemukan di DB):\n` +
+          fails.slice(0, 5).map(f => `  - ${f.site_id}: ${f.message}`).join('\n') +
+          (fails.length > 5 ? `\n  ... dan ${fails.length - 5} lainnya` : '');
+      }
+
+      alert(alertMsg);
+
+      if (currentHosMode === 'single') {
+        clearSitePreview();
+      } else {
+        if (inpHosBatchSites) inpHosBatchSites.value = '';
+        if (hosBatchCountInfo) hosBatchCountInfo.textContent = '0 Site ID dimasukkan';
+      }
+      if (inpHosNote) inpHosNote.value = '';
+
+    } catch (err) {
+      alert("Gagal memproses handover site: " + err);
+    } finally {
+      btnExecuteHandoverSite.disabled = false;
+      btnExecuteHandoverSite.textContent = "⚡ Terapkan Handover Site";
+    }
+  });
+}
+
+// Table history filter
+if (inpHosFilterHistory) {
+  inpHosFilterHistory.addEventListener('input', (e) => {
+    SiteChangesManager.renderHistoryTable(e.target.value);
+  });
+}
+
+// JSON Import / Export Bindings
+if (btnHosLoadJson) btnHosLoadJson.addEventListener('click', () => SiteChangesManager.loadFromJsonFile());
+if (btnHosSaveJson) btnHosSaveJson.addEventListener('click', () => SiteChangesManager.saveToJsonFile());
+if (btnHosResetAll) btnHosResetAll.addEventListener('click', () => SiteChangesManager.resetAll());
+
+if (btnDashLoadJson) btnDashLoadJson.addEventListener('click', () => SiteChangesManager.loadFromJsonFile());
+if (btnDashSaveJson) btnDashSaveJson.addEventListener('click', () => SiteChangesManager.saveToJsonFile());
+
+if (btnDbeLoadJson) btnDbeLoadJson.addEventListener('click', () => SiteChangesManager.loadFromJsonFile());
+if (btnDbeSaveJson) btnDbeSaveJson.addEventListener('click', () => SiteChangesManager.saveToJsonFile());
 
 // WA Blast TE Main trigger in tab-pm
 if (btnPmWaBlast) {
@@ -4007,29 +5311,62 @@ if (btnPmWaBlast) {
 
     currentTeGroups = {};
     downSites.forEach(s => {
-      const teName = (s.pic || s.te_phone || "Unknown TE").trim();
+      const rawTe = (s.pic || "").trim();
       const cluster = (s.cluster || "").trim();
 
-      const localContact = savedWaTeContacts.find(c =>
-        (c.name || "").trim().toUpperCase() === teName.toUpperCase()
-      );
+      const isUntitled = !rawTe ||
+                         rawTe === "—" ||
+                         rawTe === "-" ||
+                         rawTe === "0" ||
+                         rawTe.toLowerCase() === "nan" ||
+                         rawTe.toLowerCase() === "unknown te" ||
+                         rawTe.toLowerCase() === "te unknown" ||
+                         rawTe.toLowerCase().includes("untitled") ||
+                         rawTe.toLowerCase() === "null";
+
+      let teDisplayName = "";
+      let groupKey = "";
+      let isUnassigned = false;
+
+      if (isUntitled) {
+        isUnassigned = true;
+        const clusterLabel = cluster || "Tanpa Cluster";
+        teDisplayName = `[Belum Ada TE] ${clusterLabel}`;
+        groupKey = `UNASSIGNED_${clusterLabel.toUpperCase()}`;
+      } else {
+        teDisplayName = rawTe;
+        groupKey = rawTe.toUpperCase();
+      }
+
+      // Try finding contact in savedWaTeContacts
+      const localContact = savedWaTeContacts.find(c => {
+        const cName = (c.name || "").trim().toUpperCase();
+        const cCluster = (c.cluster || "").trim().toUpperCase();
+        if (isUnassigned) {
+          return cCluster === (cluster || "").toUpperCase() && (cName.includes("BELUM ADA") || cName.includes("NO TE") || cName.includes("PIC"));
+        }
+        return cName === teDisplayName.toUpperCase();
+      });
 
       let tePhone = (localContact && localContact.phone) ? localContact.phone.trim() : "";
+      if (!tePhone && s.te_phone && s.te_phone !== "0" && s.te_phone.toLowerCase() !== "nan") {
+        tePhone = s.te_phone.trim();
+      }
 
-      const key = teName.toUpperCase();
-
-      if (!currentTeGroups[key]) {
-        currentTeGroups[key] = {
-          name: teName,
+      if (!currentTeGroups[groupKey]) {
+        currentTeGroups[groupKey] = {
+          name: teDisplayName,
+          rawName: rawTe,
           clusters: new Set(),
           phone: tePhone,
-          sites: []
+          sites: [],
+          isUnassigned: isUnassigned
         };
       }
 
-      if (cluster) currentTeGroups[key].clusters.add(cluster);
-      if (!currentTeGroups[key].phone && tePhone) currentTeGroups[key].phone = tePhone;
-      currentTeGroups[key].sites.push(s);
+      if (cluster) currentTeGroups[groupKey].clusters.add(cluster);
+      if (!currentTeGroups[groupKey].phone && tePhone) currentTeGroups[groupKey].phone = tePhone;
+      currentTeGroups[groupKey].sites.push(s);
     });
 
     for (let k in currentTeGroups) {
@@ -4082,9 +5419,13 @@ function renderWaBlastTeTable(teGroups) {
       <td class="text-center" style="width: 30px;">
         <input type="checkbox" class="wa-blast-te-chk checkbox" data-key="${key}" ${isPhoneValid ? 'checked' : 'disabled'}>
       </td>
-      <td class="font-bold text-success">${g.name} <small class="text-subtle" style="font-weight:normal;">(${g.cluster})</small></td>
+      <td class="font-bold ${g.isUnassigned ? 'text-amb' : 'text-success'}">
+        ${g.name}
+        ${g.isUnassigned ? '<span class="badge ba" style="font-size:9.5px; padding:1px 5px; margin-left:4px;" title="Site ini belum memiliki TE di database">⚠️ Belum Ada TE</span>' : ''}
+        <small class="text-subtle" style="font-weight:normal; display:block; font-size:10.5px;">(${g.cluster})</small>
+      </td>
       <td>
-        <input type="text" class="fi wa-blast-te-phone-input" data-key="${key}" value="${g.phone}" placeholder="WA Phone (628...)" style="width:160px; font-size:13.5px; height:24px; padding:2px 6px;">
+        <input type="text" class="fi wa-blast-te-phone-input" data-key="${key}" value="${g.phone}" placeholder="${g.isUnassigned ? 'No WA PIC/RTS...' : 'WA Phone (628...)'}" style="width:160px; font-size:13.5px; height:24px; padding:2px 6px;">
       </td>
       <td class="text-center"><span class="badge ${totalCount > 1 ? 'br' : 'bb'}">${totalCount}</span></td>
       <td class="text-center">
@@ -4203,20 +5544,21 @@ if (btnExecuteWaBlastTe) {
       blastTargets.push({ key, name: g.name, jid, message });
 
       // Auto-save logic
-      const existsIdx = savedWaTeContacts.findIndex(c =>
-        (c.name || "").trim().toUpperCase() === g.name.trim().toUpperCase() &&
-        (c.cluster || "").trim().toUpperCase() === g.cluster.trim().toUpperCase()
-      );
+      if (g.phone) {
+        const saveName = g.isUnassigned ? `[No TE] ${g.cluster}` : g.name.trim();
+        const existsIdx = savedWaTeContacts.findIndex(c =>
+          (c.name || "").trim().toUpperCase() === saveName.toUpperCase() &&
+          (c.cluster || "").trim().toUpperCase() === g.cluster.trim().toUpperCase()
+        );
 
-      if (existsIdx === -1 && g.phone) {
-        savedWaTeContacts.push({
-          name: g.name.trim(),
-          cluster: g.cluster.trim(),
-          phone: g.phone.trim()
-        });
-        needSaveContacts = true;
-      } else if (existsIdx !== -1 && g.phone) {
-        if (savedWaTeContacts[existsIdx].phone !== g.phone.trim()) {
+        if (existsIdx === -1) {
+          savedWaTeContacts.push({
+            name: saveName,
+            cluster: g.cluster.trim(),
+            phone: g.phone.trim()
+          });
+          needSaveContacts = true;
+        } else if (savedWaTeContacts[existsIdx].phone !== g.phone.trim()) {
           savedWaTeContacts[existsIdx].phone = g.phone.trim();
           needSaveContacts = true;
         }
@@ -4573,4 +5915,642 @@ if (btnSaveWaBlastFilter) {
 
 // Initial load of WA TE contacts for Dashboard cards
 loadWaTeContacts();
+SiteChangesManager.init();
+
+// ==========================================
+// FLASH REPORT MODULE CONTROLLER
+// ==========================================
+let frMasterRows = [];
+let frManualPgList = [];
+let frActiveRegion = 'ALL'; // 'ALL' | 'CJN' | 'CJS'
+
+// 1. Subtab Switching in Tab-Flash
+const frSubBtns = document.querySelectorAll('#flash-subtab-seg .seg-btn');
+const frSubPanes = document.querySelectorAll('.fr-subtab-pane');
+
+frSubBtns.forEach(btn => {
+  btn.addEventListener('click', () => {
+    frSubBtns.forEach(b => b.classList.remove('active'));
+    frSubPanes.forEach(p => p.classList.add('hidden'));
+
+    btn.classList.add('active');
+    const targetId = btn.dataset.subtarget;
+    const targetElem = document.getElementById(targetId);
+    if (targetElem) {
+      targetElem.classList.remove('hidden');
+    }
+
+    // If switching to output, automatically generate preview
+    if (targetId === 'subtab-fr-output') {
+      renderFlashReportPreview();
+    }
+  });
+});
+
+// 2. Region Filter Selector
+const frRegBtns = document.querySelectorAll('.fr-reg-btn');
+frRegBtns.forEach(btn => {
+  btn.addEventListener('click', () => {
+    frRegBtns.forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    frActiveRegion = btn.dataset.reg || 'ALL';
+
+    // Update title input
+    const titleInput = document.getElementById('fr-title-input');
+    if (titleInput) {
+      if (frActiveRegion === 'CJN') titleInput.value = 'Central Java North';
+      else if (frActiveRegion === 'CJS') titleInput.value = 'Central Java South';
+      else titleInput.value = 'Central Java';
+    }
+
+    renderFrMasterTable();
+    updateFrStats();
+    renderFlashReportPreview();
+  });
+});
+
+// 3. Helper to detect region from row
+function detectRowRegion(siteId, cluster, siteName, remark, areaName, rawRegion) {
+  const combined = `${siteId || ''} ${cluster || ''} ${siteName || ''} ${remark || ''} ${areaName || ''} ${rawRegion || ''}`.toUpperCase();
+  if (combined.includes('CJS') || combined.includes('SOUTH')) return 'CJS';
+  if (combined.includes('CJN') || combined.includes('NORTH')) return 'CJN';
+  return (typeof getSiteRegion === 'function') ? getSiteRegion({ site_name: siteName, cluster: cluster, remark: remark }) : 'CJN';
+}
+
+// 4. Parse Flash Master TSV
+function parseFlashMasterTSV(text) {
+  if (!text || !text.trim()) return [];
+  const lines = text.trim().split(/\r?\n/);
+  if (lines.length < 2) return [];
+
+  const clean = s => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const rawHeaders = lines[0].split('\t').map(h => h.trim());
+  const cleanedHeaders = rawHeaders.map(clean);
+
+  const findCol = (targetKeys, exclude = []) => {
+    // 1. Exact cleaned match
+    for (const k of targetKeys) {
+      const clk = clean(k);
+      const idx = cleanedHeaders.findIndex((h, i) => !exclude.includes(i) && h === clk);
+      if (idx !== -1) return idx;
+    }
+    // 2. Substring match
+    for (const k of targetKeys) {
+      const clk = clean(k);
+      const idx = cleanedHeaders.findIndex((h, i) => !exclude.includes(i) && (h.includes(clk) || clk.includes(h)));
+      if (idx !== -1) return idx;
+    }
+    return -1;
+  };
+
+  const assigned = [];
+  const getAndTrack = (keys) => {
+    const idx = findCol(keys, assigned);
+    if (idx !== -1) assigned.push(idx);
+    return idx;
+  };
+
+  let colSiteId = getAndTrack(['newsite', 'siteid', 'sitecode', 'new_site', 'site_id', 'site id']);
+  let colMc = getAndTrack(['mccluster', 'mc_cluster', 'mc-cluster', 'clustermc', 'mc']);
+  let colSiteName = getAndTrack(['sitename', 'site_name', 'site name']);
+  let colCluster = getAndTrack(['fmoffice', 'cluster', 'fm_office', 'locationname', 'fmo']);
+  let colRoh = getAndTrack(['roh', 'region', 'area', 'areaname', 'fiveregion']);
+  let colRemark = getAndTrack(['remark', 'remarks', 'woremarks', 'rcacategory', 'summary']);
+  let colImpact = getAndTrack(['impactsite', 'impact', 'severity', 'alarmname']);
+  let colNetType = getAndTrack(['networktype', 'nettype', 'devicetype', 'ratinfo', 'technology']);
+
+  // Smart fallback: scan first data row if key columns weren't found by header name
+  const sampleParts = lines[1].split('\t');
+  if (colSiteId === -1) {
+    const idx = sampleParts.findIndex(c => /^[0-9]{2}[A-Za-z]{3}[0-9]{4}/.test(c.trim()));
+    if (idx !== -1) colSiteId = idx;
+    else colSiteId = 1; // last resort fallback
+  }
+  if (colMc === -1) {
+    const idx = sampleParts.findIndex(c => /^MC-/i.test(c.trim()));
+    if (idx !== -1) colMc = idx;
+  }
+  if (colSiteName === -1) {
+    // If siteId is at idx, siteName is often idx + 1
+    if (colSiteId !== -1 && sampleParts.length > colSiteId + 1) colSiteName = colSiteId + 1;
+    else colSiteName = 5;
+  }
+
+  const parsed = [];
+  for (let i = 1; i < lines.length; i++) {
+    const parts = lines[i].split('\t');
+    if (parts.length < 2) continue;
+
+    const siteId = (colSiteId !== -1 && parts[colSiteId] ? parts[colSiteId] : '').trim();
+    if (!siteId) continue;
+
+    const siteName = (colSiteName !== -1 && parts[colSiteName] ? parts[colSiteName] : siteId).trim();
+    const mcCluster = (colMc !== -1 && parts[colMc] ? parts[colMc] : '').trim();
+    const cluster = (colCluster !== -1 && parts[colCluster] ? parts[colCluster] : '').trim();
+    const netRaw = (colNetType !== -1 && parts[colNetType] ? parts[colNetType] : '').trim().toUpperCase();
+    const remark = (colRemark !== -1 && parts[colRemark] ? parts[colRemark] : '').trim();
+    const impact = (colImpact !== -1 && parts[colImpact] ? parts[colImpact] : '').trim();
+    const rawRoh = (colRoh !== -1 && parts[colRoh] ? parts[colRoh] : '').trim();
+
+    // Determine 2G or 4G
+    let is2G = false;
+    let is4G = false;
+    if (netRaw.includes('2G') || netRaw.includes('BTS') || netRaw.includes('GSM') || impact.includes('2G')) {
+      is2G = true;
+    }
+    if (netRaw.includes('4G') || netRaw.includes('ENODEB') || netRaw.includes('LTE') || impact.includes('4G')) {
+      is4G = true;
+    }
+    if (!is2G && !is4G) {
+      is4G = true; // default
+    }
+
+    const netLabel = is2G && is4G ? '2G/4G' : (is2G ? '2G' : '4G');
+
+    // Region determination: prefer explicit ROH column if CJN / CJS
+    let region = 'CJN';
+    const rohUpper = rawRoh.toUpperCase();
+    if (rohUpper.includes('CJN') || rohUpper.includes('NORTH')) {
+      region = 'CJN';
+    } else if (rohUpper.includes('CJS') || rohUpper.includes('SOUTH')) {
+      region = 'CJS';
+    } else {
+      region = detectRowRegion(siteId, cluster, siteName, remark, '', rawRoh);
+    }
+
+    // Check remark match for otw, onsite, priority
+    const remLow = remark.toLowerCase();
+    const matchesFilter = remLow.includes('otw') || remLow.includes('onsite') || remLow.includes('priority');
+
+    parsed.push({
+      siteId,
+      siteName,
+      mcCluster,
+      cluster,
+      netLabel,
+      is2G,
+      is4G,
+      impact,
+      remark,
+      region,
+      matchesFilter
+    });
+  }
+
+  return parsed;
+}
+
+// 5. Render Master Table Preview
+function renderFrMasterTable() {
+  const tbody = document.getElementById('fr-master-tbody');
+  const lblCount = document.getElementById('fr-tbl-count');
+  if (!tbody) return;
+
+  tbody.innerHTML = '';
+  let filtered = frMasterRows;
+  if (frActiveRegion !== 'ALL') {
+    filtered = filtered.filter(r => r.region === frActiveRegion);
+  }
+
+  if (lblCount) lblCount.textContent = `${filtered.length} sites`;
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="9" class="text-center text-subtle" style="padding:24px;">Belum ada data master diproses untuk wilayah ini.</td></tr>`;
+    return;
+  }
+
+  filtered.forEach((r, idx) => {
+    const tr = document.createElement('tr');
+    if (r.matchesFilter) {
+      tr.style.background = 'var(--accent-soft)';
+    }
+
+    const matchBadge = r.matchesFilter 
+      ? `<span style="display:inline-block;padding:2px 8px;border-radius:12px;background:var(--grn-d);color:var(--grn);font-size:10px;font-weight:700;">MATCH</span>`
+      : `<span style="font-size:10px;color:var(--txt-3);">-</span>`;
+
+    tr.innerHTML = `
+      <td style="color:var(--txt-3);font-size:11px;">${idx + 1}</td>
+      <td><span class="badge" style="font-size:10px;padding:2px 6px;">${r.region}</span></td>
+      <td style="font-weight:600;font-size:11.5px;color:var(--txt-1);">${r.mcCluster || '-'}</td>
+      <td style="font-family:var(--mono);font-size:11px;font-weight:600;color:var(--accent);">${r.siteId}</td>
+      <td style="font-size:11.5px;">${r.siteName}</td>
+      <td><span style="font-size:10.5px;font-weight:600;color:${r.is2G ? 'var(--amb)' : 'var(--blu)'};">${r.netLabel}</span></td>
+      <td style="font-size:11px;color:var(--txt-2);">${r.impact || '-'}</td>
+      <td style="font-size:11px;font-style:${r.matchesFilter ? 'normal' : 'italic'};color:${r.matchesFilter ? 'var(--txt-1)' : 'var(--txt-3)'};">${r.remark || '-'}</td>
+      <td style="text-align:center;">${matchBadge}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+// 6. Update Stats
+function updateFrStats() {
+  let rows = frMasterRows;
+  if (frActiveRegion !== 'ALL') {
+    rows = rows.filter(r => r.region === frActiveRegion);
+  }
+
+  const mcSet = new Set();
+  let count2g = 0;
+  let count4g = 0;
+  let matchedCount = 0;
+
+  rows.forEach(r => {
+    if (r.mcCluster && r.mcCluster.trim()) mcSet.add(r.mcCluster.trim());
+    if (r.is2G) count2g++;
+    if (r.is4G) count4g++;
+    if (r.matchesFilter) matchedCount++;
+  });
+
+  const elTotal = document.getElementById('fr-stat-total');
+  const elMc = document.getElementById('fr-stat-mc');
+  const el2g = document.getElementById('fr-stat-2g');
+  const el4g = document.getElementById('fr-stat-4g');
+  const elMatched = document.getElementById('fr-stat-matched');
+  const elHeadSummary = document.getElementById('fr-header-summary');
+
+  if (elTotal) elTotal.textContent = rows.length;
+  if (elMc) elMc.textContent = mcSet.size;
+  if (el2g) el2g.textContent = count2g;
+  if (el4g) el4g.textContent = count4g;
+  if (elMatched) elMatched.textContent = matchedCount + frManualPgList.length;
+
+  if (elHeadSummary) {
+    elHeadSummary.textContent = `${mcSet.size} MC Impact • 2G: ${count2g} | 4G: ${count4g}`;
+  }
+
+  // Update Additional Info Site Down Inputs automatically
+  const inp2g = document.getElementById('fr-input-2g');
+  const inp4g = document.getElementById('fr-input-4g');
+  if (inp2g && inp4g) {
+    inp2g.value = count2g;
+    inp4g.value = count4g;
+  }
+}
+
+// 7. Render Manual Position PG Table
+function renderFrManualTable() {
+  const tbody = document.getElementById('fr-manual-tbody');
+  if (!tbody) return;
+
+  tbody.innerHTML = '';
+  if (frManualPgList.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="7" class="text-center text-subtle" style="padding:16px;">Belum ada data manual ditambahkan.</td></tr>`;
+    return;
+  }
+
+  frManualPgList.forEach((m, idx) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td style="color:var(--txt-3);">${idx + 1}</td>
+      <td><span class="badge" style="font-size:10px;">${m.region}</span></td>
+      <td style="font-weight:600;">${m.cluster}</td>
+      <td style="font-family:var(--mono);color:var(--accent);">${m.siteId}</td>
+      <td>${m.siteName}</td>
+      <td style="font-size:11px;">${m.remark}</td>
+      <td style="text-align:center;">
+        <button class="tbtn-clr btn-fr-del-manual" data-idx="${idx}" style="padding:2px 8px;font-size:11px;background:var(--red-d);color:var(--red);border-color:rgba(255,59,48,0.2);">Hapus</button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  tbody.querySelectorAll('.btn-fr-del-manual').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const idx = parseInt(e.target.dataset.idx);
+      frManualPgList.splice(idx, 1);
+      renderFrManualTable();
+      updateFrStats();
+      renderFlashReportPreview();
+    });
+  });
+}
+
+// 8. Generate Flash Report Text
+function generateFlashReportText() {
+  const timeStr = (document.getElementById('fr-time-input')?.value || '21:00').trim();
+  const titleRegion = (document.getElementById('fr-title-input')?.value || 'Central Java').trim();
+
+  let rows = frMasterRows;
+  if (frActiveRegion !== 'ALL') {
+    rows = rows.filter(r => r.region === frActiveRegion);
+  }
+
+  const mcSet = new Set();
+  rows.forEach(r => {
+    if (r.mcCluster && r.mcCluster.trim()) mcSet.add(r.mcCluster.trim());
+  });
+  const mcList = Array.from(mcSet);
+  const mcCount = mcList.length;
+
+  const sepFormat = document.getElementById('fr-mc-format')?.value || 'compact';
+  let mcStr = '';
+  if (sepFormat === 'compact') {
+    mcStr = mcList.join('');
+  } else if (sepFormat === 'newline') {
+    mcStr = mcList.join('\n');
+  } else if (sepFormat === 'space') {
+    mcStr = mcList.join(' ');
+  } else {
+    mcStr = mcList.join(', ');
+  }
+
+  const count2g = document.getElementById('fr-input-2g')?.value || 0;
+  const count4g = document.getElementById('fr-input-4g')?.value || 0;
+  const dgRunning = document.getElementById('fr-dg-running')?.value || 0;
+  const dgTotal = document.getElementById('fr-dg-total')?.value || 0;
+
+  // Position PG lines (Master filtered + Manual additions)
+  const posPgLines = [];
+  rows.forEach(r => {
+    if (r.matchesFilter) {
+      const reg = r.region || 'CJS';
+      const clusterVal = (r.cluster || r.mcCluster || '').trim();
+      const clusterFormatted = clusterVal.startsWith('(blank)') ? clusterVal : `(blank)${clusterVal}`;
+      posPgLines.push(`${reg} | ${clusterFormatted} / ${r.siteId} / ${r.siteName} / ${r.remark} | `);
+    }
+  });
+
+  frManualPgList.forEach(m => {
+    const reg = m.region || 'CJS';
+    const clusterVal = (m.cluster || '').trim();
+    const clusterFormatted = clusterVal.startsWith('(blank)') ? clusterVal : `(blank)${clusterVal}`;
+    posPgLines.push(`${reg} | ${clusterFormatted} / ${m.siteId} / ${m.siteName} / ${m.remark} | `);
+  });
+
+  const pgCompleted = (document.getElementById('fr-pg-completed')?.value || '').trim() || '0';
+  const pgInstalled = (document.getElementById('fr-pg-installed')?.value || '').trim() || '0';
+  const pgMovement = (document.getElementById('fr-pg-movement')?.value || '').trim() || '0';
+
+  let out = `${timeStr}\n\n\n`;
+  out += `*Template flash report: ${titleRegion}*\n\n`;
+  out += `==================\n`;
+  out += `🔷 *MC impact:  ${mcCount} MC*\n`;
+  out += `${mcStr || '(Belum ada MC impact)'}\n\n`;
+  out += `🔷 *SITE DOWN:*\n`;
+  out += `🔹 2G: ${count2g}\n`;
+  out += `🔹 4G: ${count4g}\n\n`;
+  out += `🔷 *DG Status*\n`;
+  out += `🔹 ${dgRunning} of ${dgTotal} running\n\n`;
+  out += `🔷 *POSISION PG*\n\n`;
+  out += `🔹 PG Completed : ${pgCompleted}\n`;
+  out += `🔹 PG installed : ${pgInstalled}\n`;
+  out += `🔹 PG Movement  : ${pgMovement}\n\n`;
+  out += `🔷 *POSISION PG*\n`;
+
+  if (posPgLines.length > 0) {
+    out += posPgLines.join('\n') + '\n';
+  }
+
+  return out.trim();
+}
+
+// 9. Render Preview Box
+function renderFlashReportPreview() {
+  const box = document.getElementById('fr-preview-box');
+  const countLbl = document.getElementById('fr-preview-char-count');
+  if (!box) return;
+
+  const text = generateFlashReportText();
+  box.value = text;
+
+  if (countLbl) {
+    const linesCount = text ? text.split('\n').length : 0;
+    countLbl.textContent = `${text.length} characters | ${linesCount} lines`;
+  }
+}
+
+// 10. Bind Actions & Listeners
+const btnFrProcess = document.getElementById('btn-fr-process');
+if (btnFrProcess) {
+  btnFrProcess.addEventListener('click', () => {
+    const txt = (document.getElementById('fr-txt-master')?.value || '').trim();
+    if (!txt) {
+      alert('Silakan paste data TSV Master Table terlebih dahulu!');
+      return;
+    }
+    frMasterRows = parseFlashMasterTSV(txt);
+    const statusLbl = document.getElementById('fr-master-status');
+    if (statusLbl) {
+      statusLbl.textContent = `✅ Berhasil memproses ${frMasterRows.length} baris Master Table.`;
+      statusLbl.style.color = 'var(--grn)';
+    }
+    renderFrMasterTable();
+    updateFrStats();
+    renderFlashReportPreview();
+  });
+}
+
+const btnFrLoadMain = document.getElementById('btn-fr-load-main');
+if (btnFrLoadMain) {
+  btnFrLoadMain.addEventListener('click', () => {
+    // 1. Try from txtMaster if available
+    const txtMain = (document.getElementById('txt-master')?.value || '').trim();
+    if (txtMain) {
+      document.getElementById('fr-txt-master').value = txtMain;
+      frMasterRows = parseFlashMasterTSV(txtMain);
+    } else if (typeof statusData !== 'undefined' && statusData && statusData.length > 0) {
+      // 2. Or map from statusData
+      frMasterRows = statusData.map(s => {
+        const remLow = (s.remark || '').toLowerCase();
+        return {
+          siteId: s.new_site || s.site_id || '',
+          siteName: s.site_name || '',
+          mcCluster: s.cluster || '',
+          cluster: s.cluster || '',
+          netLabel: (s.category && s.category.includes('2G')) ? '2G' : '4G',
+          is2G: (s.category && s.category.includes('2G')),
+          is4G: !(s.category && s.category.includes('2G')),
+          impact: s.impact || s.status || '',
+          remark: s.remark || '',
+          region: (typeof getSiteRegion === 'function') ? getSiteRegion(s) : 'CJN',
+          matchesFilter: remLow.includes('otw') || remLow.includes('onsite') || remLow.includes('priority')
+        };
+      });
+    } else {
+      alert('Belum ada data di Master Data utama. Silakan paste data di tab Data atau paste langsung di sini.');
+      return;
+    }
+
+    const statusLbl = document.getElementById('fr-master-status');
+    if (statusLbl) {
+      statusLbl.textContent = `✅ Dimuat ${frMasterRows.length} baris dari Master Data utama.`;
+      statusLbl.style.color = 'var(--accent)';
+    }
+
+    renderFrMasterTable();
+    updateFrStats();
+    renderFlashReportPreview();
+  });
+}
+
+const btnFrClear = document.getElementById('btn-fr-clear');
+if (btnFrClear) {
+  btnFrClear.addEventListener('click', () => {
+    document.getElementById('fr-txt-master').value = '';
+    frMasterRows = [];
+    document.getElementById('fr-master-status').textContent = 'Data dikosongkan.';
+    renderFrMasterTable();
+    updateFrStats();
+    renderFlashReportPreview();
+  });
+}
+
+// Add Manual Position PG with auto DB lookup
+const btnFrAddManual = document.getElementById('btn-fr-add-manual');
+if (btnFrAddManual) {
+  btnFrAddManual.addEventListener('click', async () => {
+    const siteIdInput = document.getElementById('fr-manual-site-id');
+    const remarkInput = document.getElementById('fr-manual-remark');
+    const siteId = (siteIdInput?.value || '').trim();
+    const remark = (remarkInput?.value || '').trim();
+
+    if (!siteId) {
+      alert('Site ID wajib diisi!');
+      return;
+    }
+
+    let siteName = '';
+    let cluster = '';
+    let region = 'CJS';
+
+    // 1. First look up from SQLite DB if available
+    try {
+      if (typeof invoke === 'function') {
+        const row = await invoke('lookup_site', { siteId });
+        if (row) {
+          siteName = row['Site Name'] || row.site_name || '';
+          cluster = row['FM Office'] || row['Cluster (MC)'] || row.cluster || '';
+          const area = (row['Area'] || row['Region'] || '').toUpperCase();
+          if (area.includes('CJN') || area.includes('NORTH')) {
+            region = 'CJN';
+          } else if (area.includes('CJS') || area.includes('SOUTH')) {
+            region = 'CJS';
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('lookup_site error for manual site:', e);
+    }
+
+    // 2. Fallback to frMasterRows
+    if (!siteName) {
+      const matchMaster = frMasterRows.find(r => (r.siteId || '').toUpperCase() === siteId.toUpperCase());
+      if (matchMaster) {
+        siteName = matchMaster.siteName || '';
+        cluster = matchMaster.cluster || matchMaster.mcCluster || cluster;
+        region = matchMaster.region || region;
+      }
+    }
+
+    // 3. Fallback to statusData from main Data tab
+    if (!siteName && typeof statusData !== 'undefined' && Array.isArray(statusData)) {
+      const matchStatus = statusData.find(s => ((s.new_site || s.site_id || '').toUpperCase() === siteId.toUpperCase()));
+      if (matchStatus) {
+        siteName = matchStatus.site_name || '';
+        cluster = matchStatus.cluster || cluster;
+        const sReg = (matchStatus.region || matchStatus.area || '').toUpperCase();
+        if (sReg.includes('CJN') || sReg.includes('NORTH')) region = 'CJN';
+        else if (sReg.includes('CJS') || sReg.includes('SOUTH')) region = 'CJS';
+      }
+    }
+
+    // 4. Default if not in DB
+    if (!siteName) {
+      siteName = siteId;
+    }
+    if (!cluster) {
+      cluster = '01CLUSTER';
+    }
+
+    frManualPgList.push({
+      region,
+      cluster,
+      siteId,
+      siteName,
+      remark: remark || '-'
+    });
+
+    // Reset inputs
+    if (siteIdInput) siteIdInput.value = '';
+    if (remarkInput) remarkInput.value = '';
+
+    renderFrManualTable();
+    updateFrStats();
+    renderFlashReportPreview();
+  });
+
+  // Enter key support
+  ['fr-manual-site-id', 'fr-manual-remark'].forEach(id => {
+    document.getElementById(id)?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        btnFrAddManual.click();
+      }
+    });
+  });
+}
+
+// Sync Site Down button
+const btnFrSyncSiteDown = document.getElementById('btn-fr-sync-sitedown');
+if (btnFrSyncSiteDown) {
+  btnFrSyncSiteDown.addEventListener('click', () => {
+    updateFrStats();
+    renderFlashReportPreview();
+  });
+}
+
+// DG Status change listener
+['fr-dg-running', 'fr-dg-total'].forEach(id => {
+  document.getElementById(id)?.addEventListener('input', () => {
+    const r = document.getElementById('fr-dg-running')?.value || 0;
+    const t = document.getElementById('fr-dg-total')?.value || 0;
+    const lbl = document.getElementById('lbl-dg-preview');
+    if (lbl) lbl.textContent = `${r} of ${t} running`;
+    renderFlashReportPreview();
+  });
+});
+
+// Sync inputs to preview on change
+['fr-input-2g', 'fr-input-4g', 'fr-time-input', 'fr-title-input', 'fr-mc-format', 'fr-pg-completed', 'fr-pg-installed', 'fr-pg-movement'].forEach(id => {
+  document.getElementById(id)?.addEventListener('input', renderFlashReportPreview);
+  document.getElementById(id)?.addEventListener('change', renderFlashReportPreview);
+});
+
+// Generate button
+document.getElementById('btn-fr-generate')?.addEventListener('click', renderFlashReportPreview);
+
+// Copy button
+const btnFrCopy = document.getElementById('btn-fr-copy');
+if (btnFrCopy) {
+  btnFrCopy.addEventListener('click', () => {
+    const box = document.getElementById('fr-preview-box');
+    if (!box || !box.value.trim()) {
+      alert('Tidak ada teks untuk disalin!');
+      return;
+    }
+    navigator.clipboard.writeText(box.value.trim()).then(() => {
+      const oldT = btnFrCopy.textContent;
+      btnFrCopy.textContent = '✓ Copied!';
+      setTimeout(() => { btnFrCopy.textContent = oldT; }, 1800);
+    }).catch(err => {
+      alert('Gagal menyalin: ' + err);
+    });
+  });
+}
+
+// Auto-populate hour time like broadcast on init
+(() => {
+  const timeInp = document.getElementById('fr-time-input');
+  if (timeInp) {
+    let now = new Date();
+    if (now.getMinutes() >= 30) {
+      now.setHours(now.getHours() + 1);
+    }
+    now.setMinutes(0, 0, 0);
+    timeInp.value = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }).replace(/\./g, ':');
+  }
+})();
+
 

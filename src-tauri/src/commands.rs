@@ -544,12 +544,17 @@ pub fn wa_start_server(app: tauri::AppHandle) -> Result<(), String> {
     // 3. Jalankan server node
     #[cfg(target_os = "windows")]
     {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+
         // Jalankan perintah node, tangkap jika gagal karena node tidak terinstal
+        // creation_flags(CREATE_NO_WINDOW) mencegah terminal cmd muncul
         Command::new("cmd")
             .args(&["/C", "node server.js"])
             .current_dir(&wa_dir)
             .stdout(Stdio::null())
             .stderr(Stdio::null())
+            .creation_flags(CREATE_NO_WINDOW)
             .spawn()
             .map_err(|e| {
                 if e.kind() == std::io::ErrorKind::NotFound {
@@ -1113,7 +1118,7 @@ pub fn load_te_contacts_excel(app: tauri::AppHandle, path: String) -> Result<usi
         json!({ "contacts": [] })
     };
 
-    let mut contacts_arr = contacts_list["contacts"].as_array_mut()
+    let contacts_arr = contacts_list["contacts"].as_array_mut()
         .ok_or("Format wa_te_contacts.json tidak valid")?;
 
     let mut import_count = 0;
@@ -1244,7 +1249,7 @@ pub fn update_site_db(state: State<'_, AppState>, edit_data: SiteEditData) -> Re
         if let Some(val) = row_vec.get(key_idx) {
             if val.to_uppercase() == sid_upper {
                 // Update based on cached indices
-                let mut update_field = |row: &mut Vec<String>, idx_key: &str, new_val: &str| {
+                let update_field = |row: &mut Vec<String>, idx_key: &str, new_val: &str| {
                     if let Some(&idx) = idx_cache.get(idx_key) {
                         if let Some(cell) = row.get_mut(idx) { *cell = new_val.to_string(); }
                     }
@@ -1266,7 +1271,7 @@ pub fn update_site_db(state: State<'_, AppState>, edit_data: SiteEditData) -> Re
                 update_field(row_vec, "TLP", &edit_data.tlp);
 
                 // Fallback for fields not in cache
-                let mut try_update_raw = |row: &mut Vec<String>, k_match: &str, new_val: &str| {
+                let try_update_raw = |row: &mut Vec<String>, k_match: &str, new_val: &str| {
                     if let Some(idx) = headers.iter().position(|h| h.contains(k_match)) {
                         if let Some(cell) = row.get_mut(idx) { *cell = new_val.to_string(); }
                     }
@@ -1299,6 +1304,404 @@ pub fn update_site_db(state: State<'_, AppState>, edit_data: SiteEditData) -> Re
         }
     }
     Err("Site tidak ditemukan di memory".into())
+}
+
+#[tauri::command]
+pub fn reassign_te_db(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    old_te_name: String,
+    new_te_name: String,
+    new_te_phone: String,
+    target_cluster: Option<String>,
+) -> Result<serde_json::Value, String> {
+    use std::fs;
+    use tauri::Manager;
+
+    let old_clean = old_te_name.trim();
+    let new_clean = new_te_name.trim();
+    let phone_clean = new_te_phone.trim();
+    let cluster_filter = target_cluster.as_deref().unwrap_or("ALL").trim();
+    let is_all_clusters = cluster_filter.is_empty() || cluster_filter.eq_ignore_ascii_case("ALL");
+
+    if old_clean.is_empty() || new_clean.is_empty() {
+        return Err("Nama TE Lama dan TE Baru tidak boleh kosong".into());
+    }
+
+    let mut updated_sites = 0;
+    let mut reassigned_sites = Vec::new();
+    {
+        let mut db = state.db_df.lock().unwrap();
+        let idx_cache = state.db_indices.lock().unwrap();
+        let mut te_cache = state.db_te_cache.lock().unwrap();
+        let headers = state.db_headers.lock().unwrap();
+
+        let te_name_idx = idx_cache.get("TE_NAME").cloned();
+        let te_phone_idx = idx_cache.get("TE_PHONE").cloned();
+        let cluster_idx = idx_cache.get("MC").or_else(|| idx_cache.get("FM_OFFICE")).cloned();
+        let site_name_idx = idx_cache.get("SITE_NAME").cloned();
+        let site_id_idx = headers.iter().position(|h| {
+            let hu = h.to_uppercase();
+            hu.contains("SITE ID MSH") || (hu.contains("SITE") && hu.contains("ID"))
+        });
+
+        if let Some(t_idx) = te_name_idx {
+            for row in db.iter_mut() {
+                let current_te = row.get(t_idx).map(|s| s.trim()).unwrap_or_default();
+                if current_te.eq_ignore_ascii_case(old_clean) {
+                    if !is_all_clusters {
+                        if let Some(c_idx) = cluster_idx {
+                            let current_cluster = row.get(c_idx).map(|s| s.trim()).unwrap_or_default();
+                            if !current_cluster.eq_ignore_ascii_case(cluster_filter) {
+                                continue;
+                            }
+                        }
+                    }
+
+                    // Update TE Name
+                    if let Some(cell) = row.get_mut(t_idx) {
+                        *cell = new_clean.to_string();
+                    }
+
+                    // Update TE Phone if provided
+                    if let Some(p_idx) = te_phone_idx {
+                        if !phone_clean.is_empty() {
+                            if let Some(cell) = row.get_mut(p_idx) {
+                                *cell = phone_clean.to_string();
+                            }
+                        }
+                    }
+
+                    // Update in-memory site -> TE cache & record site
+                    let mut recorded_sid = String::new();
+                    if let Some(s_idx) = site_id_idx {
+                        if let Some(sid) = row.get(s_idx) {
+                            let sid_upper = sid.trim().to_uppercase();
+                            if !sid_upper.is_empty() {
+                                te_cache.insert(sid_upper.clone(), new_clean.to_string());
+                                recorded_sid = sid_upper;
+                            }
+                        }
+                    }
+
+                    let s_name = site_name_idx.and_then(|i| row.get(i)).cloned().unwrap_or_default();
+                    let s_cluster = cluster_idx.and_then(|i| row.get(i)).cloned().unwrap_or_default();
+                    if !recorded_sid.is_empty() {
+                        reassigned_sites.push(serde_json::json!({
+                            "site_id": recorded_sid,
+                            "site_name": s_name,
+                            "cluster": s_cluster,
+                            "old_te": old_clean,
+                            "new_te": new_clean,
+                            "new_te_phone": phone_clean
+                        }));
+                    }
+
+                    updated_sites += 1;
+                }
+            }
+        }
+    }
+
+    // 2. Update wa_te_contacts.json
+    let mut updated_contacts = 0;
+    if let Ok(config_dir) = app.path().app_config_dir() {
+        let file_path = config_dir.join("wa_te_contacts.json");
+        if file_path.exists() {
+            if let Ok(content) = fs::read_to_string(&file_path) {
+                if let Ok(mut val) = serde_json::from_str::<serde_json::Value>(&content) {
+                    if let Some(contacts_arr) = val["contacts"].as_array_mut() {
+                        let mut found = false;
+                        for c in contacts_arr.iter_mut() {
+                            let c_name = c["name"].as_str().unwrap_or_default().trim();
+                            let c_cluster = c["cluster"].as_str().unwrap_or_default().trim();
+
+                            if c_name.eq_ignore_ascii_case(old_clean) {
+                                if is_all_clusters || c_cluster.eq_ignore_ascii_case(cluster_filter) {
+                                    c["name"] = serde_json::json!(new_clean);
+                                    if !phone_clean.is_empty() {
+                                        c["phone"] = serde_json::json!(phone_clean);
+                                    }
+                                    updated_contacts += 1;
+                                    found = true;
+                                }
+                            }
+                        }
+
+                        // If not found in contacts list, add as new entry if cluster is specified or general
+                        if !found && !phone_clean.is_empty() {
+                            let cluster_to_save = if is_all_clusters { "" } else { cluster_filter };
+                            contacts_arr.push(serde_json::json!({
+                                "name": new_clean,
+                                "cluster": cluster_to_save,
+                                "phone": phone_clean
+                            }));
+                            updated_contacts += 1;
+                        }
+                    }
+
+                    let _ = fs::create_dir_all(&config_dir);
+                    if let Ok(json_str) = serde_json::to_string_pretty(&val) {
+                        let _ = fs::write(file_path, json_str);
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(serde_json::json!({
+        "updated_sites": updated_sites,
+        "updated_contacts": updated_contacts,
+        "reassigned_sites": reassigned_sites
+    }))
+}
+
+// -----------------------------------------
+// JSON Changes & Site Handover Operations
+// -----------------------------------------
+
+#[tauri::command]
+pub async fn pick_json_file(app: tauri::AppHandle) -> Result<String, String> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    app.dialog().file().add_filter("JSON", &["json"]).pick_file(move |file_path| {
+        let path_str = match file_path {
+            Some(p) => p.into_path().unwrap().to_string_lossy().to_string(),
+            None => "".to_string(),
+        };
+        tx.send(path_str).unwrap();
+    });
+    let path = rx.recv().map_err(|e| e.to_string())?;
+    Ok(path)
+}
+
+#[tauri::command]
+pub async fn save_changes_json_file(
+    app: tauri::AppHandle,
+    json_content: String,
+    default_filename: Option<String>,
+) -> Result<String, String> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let def_name = default_filename.unwrap_or_else(|| "cjhelper_site_changes.json".to_string());
+
+    app.dialog()
+        .file()
+        .add_filter("JSON", &["json"])
+        .set_file_name(&def_name)
+        .save_file(move |file_path| {
+            let path_str = match file_path {
+                Some(p) => p.into_path().unwrap().to_string_lossy().to_string(),
+                None => "".to_string(),
+            };
+            tx.send(path_str).unwrap();
+        });
+
+    let path = rx.recv().map_err(|e| e.to_string())?;
+    if path.is_empty() {
+        return Ok("".to_string());
+    }
+
+    std::fs::write(&path, json_content).map_err(|e| format!("Gagal menyimpan file: {}", e))?;
+    Ok(path)
+}
+
+#[tauri::command]
+pub fn read_json_file(path: String) -> Result<String, String> {
+    if path.is_empty() {
+        return Err("Path file kosong".to_string());
+    }
+    std::fs::read_to_string(&path).map_err(|e| format!("Gagal membaca file: {}", e))
+}
+
+#[tauri::command]
+pub fn apply_site_changes(state: State<'_, AppState>, changes: serde_json::Value) -> Result<serde_json::Value, String> {
+    let mut db = state.db_df.lock().unwrap();
+    let db_lookup = state.db_lookup.lock().unwrap();
+    let mut te_cache = state.db_te_cache.lock().unwrap();
+    let idx_cache = state.db_indices.lock().unwrap();
+    let headers = state.db_headers.lock().unwrap();
+
+    if db.is_empty() {
+        return Err("Database belum dimuat. Muat Master DB Excel terlebih dahulu.".into());
+    }
+
+    let te_name_idx = idx_cache.get("TE_NAME").cloned();
+    let te_phone_idx = idx_cache.get("TE_PHONE").cloned();
+
+    let mut applied_count = 0;
+    let mut not_found = Vec::new();
+
+    let overrides_obj = if let Some(ov) = changes.get("overrides").and_then(|v| v.as_object()) {
+        ov
+    } else if let Some(obj) = changes.as_object() {
+        obj
+    } else {
+        return Err("Format JSON tidak valid (harus berupa objek JSON)".into());
+    };
+
+    for (site_id, item) in overrides_obj.iter() {
+        let sid_upper = site_id.trim().to_uppercase();
+        if sid_upper.is_empty() {
+            continue;
+        }
+
+        if let Some(&row_idx) = db_lookup.get(&sid_upper) {
+            if let Some(row) = db.get_mut(row_idx) {
+                let new_te = item.get("te_name")
+                    .or_else(|| item.get("new_te"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .trim();
+
+                let new_phone = item.get("te_phone")
+                    .or_else(|| item.get("new_te_phone"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .trim();
+
+                if !new_te.is_empty() {
+                    if let Some(t_idx) = te_name_idx {
+                        if let Some(cell) = row.get_mut(t_idx) {
+                            *cell = new_te.to_string();
+                        }
+                    }
+                    te_cache.insert(sid_upper.clone(), new_te.to_string());
+                }
+
+                if !new_phone.is_empty() {
+                    if let Some(p_idx) = te_phone_idx {
+                        if let Some(cell) = row.get_mut(p_idx) {
+                            *cell = new_phone.to_string();
+                        }
+                    }
+                }
+
+                // If extra fields are provided
+                if let Some(fields) = item.get("fields").and_then(|f| f.as_object()) {
+                    for (field_name, field_val) in fields {
+                        let fn_upper = field_name.to_uppercase();
+                        let val_str = field_val.as_str().unwrap_or_default();
+                        if let Some(&col_idx) = idx_cache.get(&fn_upper) {
+                            if let Some(cell) = row.get_mut(col_idx) {
+                                *cell = val_str.to_string();
+                            }
+                        } else if let Some(col_idx) = headers.iter().position(|h| h.to_uppercase() == fn_upper) {
+                            if let Some(cell) = row.get_mut(col_idx) {
+                                *cell = val_str.to_string();
+                            }
+                        }
+                    }
+                }
+
+                applied_count += 1;
+            } else {
+                not_found.push(sid_upper);
+            }
+        } else {
+            not_found.push(sid_upper);
+        }
+    }
+
+    Ok(serde_json::json!({
+        "applied_count": applied_count,
+        "not_found": not_found
+    }))
+}
+
+#[tauri::command]
+pub fn handover_sites_batch(
+    state: State<'_, AppState>,
+    site_ids: Vec<String>,
+    new_te_name: String,
+    new_te_phone: String,
+    note: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let mut db = state.db_df.lock().unwrap();
+    let db_lookup = state.db_lookup.lock().unwrap();
+    let mut te_cache = state.db_te_cache.lock().unwrap();
+    let idx_cache = state.db_indices.lock().unwrap();
+
+    if db.is_empty() {
+        return Err("Database belum dimuat. Muat Master DB Excel terlebih dahulu.".into());
+    }
+
+    let new_te_clean = new_te_name.trim();
+    let new_phone_clean = new_te_phone.trim();
+
+    if new_te_clean.is_empty() {
+        return Err("Nama TE Baru tidak boleh kosong".into());
+    }
+
+    let te_name_idx = idx_cache.get("TE_NAME").cloned();
+    let te_phone_idx = idx_cache.get("TE_PHONE").cloned();
+    let site_name_idx = idx_cache.get("SITE_NAME").cloned();
+    let cluster_idx = idx_cache.get("MC").or_else(|| idx_cache.get("FM_OFFICE")).cloned();
+
+    let mut success_count = 0;
+    let mut results = Vec::new();
+    let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+
+    for raw_sid in site_ids {
+        let sid = raw_sid.trim().to_uppercase();
+        if sid.is_empty() {
+            continue;
+        }
+
+        if let Some(&row_idx) = db_lookup.get(&sid) {
+            if let Some(row) = db.get_mut(row_idx) {
+                let site_name = site_name_idx.and_then(|i| row.get(i)).cloned().unwrap_or_default();
+                let cluster = cluster_idx.and_then(|i| row.get(i)).cloned().unwrap_or_default();
+                let old_te = te_name_idx.and_then(|i| row.get(i)).cloned().unwrap_or_default();
+                let old_phone = te_phone_idx.and_then(|i| row.get(i)).cloned().unwrap_or_default();
+
+                // Update row
+                if let Some(t_idx) = te_name_idx {
+                    if let Some(cell) = row.get_mut(t_idx) {
+                        *cell = new_te_clean.to_string();
+                    }
+                }
+                if !new_phone_clean.is_empty() {
+                    if let Some(p_idx) = te_phone_idx {
+                        if let Some(cell) = row.get_mut(p_idx) {
+                            *cell = new_phone_clean.to_string();
+                        }
+                    }
+                }
+
+                te_cache.insert(sid.clone(), new_te_clean.to_string());
+                success_count += 1;
+
+                results.push(serde_json::json!({
+                    "site_id": sid,
+                    "site_name": site_name,
+                    "cluster": cluster,
+                    "old_te": old_te,
+                    "old_phone": old_phone,
+                    "new_te": new_te_clean,
+                    "new_phone": new_phone_clean,
+                    "note": note.as_deref().unwrap_or_default(),
+                    "timestamp": now,
+                    "success": true
+                }));
+            } else {
+                results.push(serde_json::json!({
+                    "site_id": sid,
+                    "success": false,
+                    "message": "Baris DB tidak valid"
+                }));
+            }
+        } else {
+            results.push(serde_json::json!({
+                "site_id": sid,
+                "success": false,
+                "message": "Site ID tidak ditemukan di Master DB"
+            }));
+        }
+    }
+
+    Ok(serde_json::json!({
+        "success_count": success_count,
+        "records": results
+    }))
 }
 
 #[tauri::command]

@@ -30,9 +30,15 @@ pub fn run() {
             save_wa_te_contacts,
             load_te_contacts_excel,
             update_site_db,
+            reassign_te_db,
             export_db,
             open_url,
-            find_nearest_sites
+            find_nearest_sites,
+            pick_json_file,
+            save_changes_json_file,
+            read_json_file,
+            apply_site_changes,
+            handover_sites_batch
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

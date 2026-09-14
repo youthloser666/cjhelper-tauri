@@ -1,11 +1,11 @@
 {
-  "version": "1.0.0",
-  "notes": "Release v1.0.0: Full English UI translation, direct WA Blast TE with strict contact DB matching, FM Office extraction, and performance fixes.",
-  "pub_date": "2026-07-29T15:08:00Z",
+  "version": "2.0.1",
+  "notes": "Release v2.0.1: Handover New Site / BTS feature, JSON import/export workflow for site modifications, auto-sync with Handover TE, and performance optimizations.",
+  "pub_date": "2026-09-06T16:15:00Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTR3drbW5nS2I5Rm5pWG1JTFF4cWhOTFpaL3orMHk3NkgrdGNicjBxRml5OGFleXRxejRhMHBnejRNOW41R1R4bERkSmNRZUNGaURCQzRIV0lybFYxZG0yMXFzRkVldHdVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MzM3NzMyCWZpbGU6Y2poZWxwZXItYXBwXzEuMC4wX3g2NC1zZXR1cC5leGUKcW4wbFY1dzJuMzdSWnpBd3FjbFpNYnFvdEdwNld0YkRhdkNUZmFYSENtUzltUU11Uk8rMEYycHZ0dUcxb3hTYTFWK0xBSFV1NVVHa2lJVS9WWXAvREE9PQo=",
-      "url": "https://github.com/youthloser666/cjhelper-tauri/releases/download/CJH/cjhelper-app_1.0.0_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTdi9kM2hOci94cDJZMFc1UXZZVU93cEVKQW0rQVhXek03VlpoWHVvOFdLa2VJTUlSWStkeUlMc3hubm5PY1FQaVhrWi9FZWlwODgyNWtVM29RcnNuYkltOThKUVd5MHc4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg4NzExNDU3CWZpbGU6Y2poZWxwZXItYXBwXzIuMC4xX3g2NC1zZXR1cC5leGUKeEZNM2hFY3RDMktnTjNJbmthWkpMTGl6NE1CYmkwZXM1Ynd3djFJMHNaVGV0RTJBY0hFamhYME0vQjZydEYwSVgzdCs3NzhVYm5vVElBSk96Qk1kQlE9PQo=",
+      "url": "https://github.com/youthloser666/cjhelper-tauri/releases/download/CJH/cjhelper-app_2.0.1_x64-setup.exe"
     }
   }
 }
