@@ -534,7 +534,7 @@ dependencies = [
 
 [[package]]
 name = "cjhelper-app"
-version = "2.0.1"
+version = "2.0.2"
 dependencies = [
  "calamine",
  "chrono",
