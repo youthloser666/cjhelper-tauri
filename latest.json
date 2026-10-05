@@ -1,11 +1,11 @@
 {
-  "version": "2.0.1",
-  "notes": "Release v2.0.1: Handover New Site / BTS feature, JSON import/export workflow for site modifications, auto-sync with Handover TE, and performance optimizations.",
-  "pub_date": "2026-09-06T16:15:00Z",
+  "version": "2.0.2",
+  "notes": "Release v2.0.2: Auto-reconnect WhatsApp saat status 401/logout, penambahan tombol Reset WA di modal status, dan ekspansi tampilan preview Flash Report penuh ke bawah.",
+  "pub_date": "2026-09-14T02:40:00Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTdi9kM2hOci94cDJZMFc1UXZZVU93cEVKQW0rQVhXek03VlpoWHVvOFdLa2VJTUlSWStkeUlMc3hubm5PY1FQaVhrWi9FZWlwODgyNWtVM29RcnNuYkltOThKUVd5MHc4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg4NzExNDU3CWZpbGU6Y2poZWxwZXItYXBwXzIuMC4xX3g2NC1zZXR1cC5leGUKeEZNM2hFY3RDMktnTjNJbmthWkpMTGl6NE1CYmkwZXM1Ynd3djFJMHNaVGV0RTJBY0hFamhYME0vQjZydEYwSVgzdCs3NzhVYm5vVElBSk96Qk1kQlE9PQo=",
-      "url": "https://github.com/youthloser666/cjhelper-tauri/releases/download/CJH/cjhelper-app_2.0.1_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTdi9kM2hOci94cDR5RFI1YnIyMVl3UzlEeFNSL2ZPNE84YWJyL0FXMXUvTnY1YkNaZjBKd3RTY2QwS2dxUHBGbmJ3L01xZ3c5UU1mMUgxdzVPRFJiOHdibForZzVDQkFBPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg5MzUzNTA3CWZpbGU6Y2poZWxwZXItYXBwXzIuMC4yX3g2NC1zZXR1cC5leGUKZU01WkdaT09CN0JRRGpsOUtDdm9ZSWdrZ1NkNEJVRkxvTDB3cWZnZW8xSGNyWjZCNjRlYzQ5cDgvT0k4a0svNWhZYWRzcFZ2aHZKaUJESEZROXd5Q2c9PQo=",
+      "url": "https://github.com/youthloser666/cjhelper-tauri/releases/download/CJH/cjhelper-app_2.0.2_x64-setup.exe"
     }
   }
 }
