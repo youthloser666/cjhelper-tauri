@@ -63,6 +63,7 @@
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
               <button class="tbtn-load" id="btn-load-db" style="font-size:10px;padding:5px 12px;">Load Excel DB</button>
               <button class="tbtn-load" id="btn-dash-import-contact" style="font-size:10px;padding:5px 12px;background:var(--grn-d);color:var(--grn);border-color:rgba(34,197,94,0.3);">Import TE Contacts</button>
+              <button class="tbtn-load" id="btn-dash-import-mplane" style="font-size:10px;padding:5px 12px;background:rgba(6,182,212,0.15);color:#22d3ee;border-color:rgba(6,182,212,0.3);" title="Import file Nokia MRBTS info (.xlsb / .xlsx) untuk data Mplane IP Address">Import Nokia MPlane</button>
               <button class="tbtn-load" id="btn-dash-handover-te" style="font-size:10px;padding:5px 12px;background:var(--blu-d);color:var(--blu);border-color:rgba(59,130,246,0.3);" title="Pergantian TE massal berdasarkan nama TE atau cluster">Handover TE</button>
               <button class="tbtn-load" id="btn-dash-handover-site" style="font-size:10px;padding:5px 12px;background:rgba(168,85,247,0.15);color:#c084fc;border-color:rgba(168,85,247,0.3);" title="Pindah kepemilikan site/BTS dari TE lama ke TE baru">Handover Site / BTS</button>
               <button class="tbtn-load" id="btn-dash-load-json" style="font-size:10px;padding:5px 12px;background:rgba(234,179,8,0.15);color:#facc15;border-color:rgba(234,179,8,0.3);" title="Muat file .json perubahan site yang pernah disimpan">Load Changes (.json)</button>
@@ -309,6 +310,10 @@
                     <button class="tbtn fr-reg-btn" data-reg="CJN" style="padding:2px 10px;font-size:11px;">CJN</button>
                     <button class="tbtn fr-reg-btn" data-reg="CJS" style="padding:2px 10px;font-size:11px;">CJS</button>
                   </div>
+                  <div class="segmented-control" id="fr-impact-seg" style="display:flex;gap:2px;background:var(--bg-surface);padding:2px;border-radius:var(--r-pill);border:1px solid var(--bdr);" title="Filter kategori impact (Default: Fully Down / Site Down)">
+                    <button class="tbtn active fr-imp-btn" data-imp="FULLY" style="padding:2px 10px;font-size:11px;">Fully Down Only</button>
+                    <button class="tbtn fr-imp-btn" data-imp="ALL" style="padding:2px 10px;font-size:11px;">All</button>
+                  </div>
                   <button class="tbtn-a" id="btn-fr-load-main" style="padding:4px 12px;font-size:11px;">Load dari Master Data</button>
                   <button class="tbtn-clr" id="btn-fr-clear">Clear</button>
                 </div>
@@ -415,10 +420,14 @@
                 </div>
               </div>
 
-              <!-- PG Status (Completed, Installed, Movement) Card -->
+              <!-- PG Status (Team Move, Completed, Installed, Movement) Card -->
               <div class="t-card" style="margin:0;padding:14px;">
                 <div style="font-size:13px;font-weight:700;color:var(--txt-1);margin-bottom:10px;">PG Status</div>
-                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
+                <div style="display:grid;grid-template-columns:1.2fr 1fr 1fr 1fr;gap:8px;">
+                  <div>
+                    <label style="font-size:10.5px;color:var(--txt-2);display:block;margin-bottom:4px;">Team Move:</label>
+                    <input type="text" id="fr-team-move" class="fi" value="" placeholder="Cth: 1102 Cluster" style="width:100%;">
+                  </div>
                   <div>
                     <label style="font-size:10.5px;color:var(--txt-2);display:block;margin-bottom:4px;">PG Completed:</label>
                     <input type="number" id="fr-pg-completed" class="fi" value="" placeholder="0" min="0" style="width:100%;">
@@ -694,7 +703,8 @@
             <div class="t-card-head">
               <span class="t-card-title">Database Lookup</span>
               <div style="display:flex;align-items:center;gap:5px;">
-                <button class="cbtn" id="btn-db-lookup-handover" style="margin-left:6px;background:rgba(168,85,247,0.15);color:#c084fc;border:1px solid rgba(168,85,247,0.3);" title="Buka modal handover untuk site yang sedang dilihat">🔄 Handover Site Ini</button>
+                <button class="cbtn" id="btn-db-import-mplane" style="margin-left:6px;background:rgba(6,182,212,0.15);color:#22d3ee;border:1px solid rgba(6,182,212,0.3);" title="Import file Nokia MRBTS info (.xlsb / .xlsx) untuk Mplane IP">📁 Import MPlane</button>
+                <button class="cbtn" id="btn-db-lookup-handover" style="margin-left:4px;background:rgba(168,85,247,0.15);color:#c084fc;border:1px solid rgba(168,85,247,0.3);" title="Buka modal handover untuk site yang sedang dilihat">🔄 Handover Site Ini</button>
                 <button class="cbtn ca" id="btn-db-copy-all" style="margin-left:4px;">Copy All</button>
               </div>
             </div>
@@ -753,6 +763,18 @@
                   <div class="ir">
                     <div class="il">Latitude</div>
                     <div class="iv em" id="db-f-lat">—</div>
+                  </div>
+                  <div class="ir">
+                    <div class="il">IP Mplane BTS</div>
+                    <div class="iv em" id="db-f-ip-mplane-bts">—</div>
+                  </div>
+                  <div class="ir">
+                    <div class="il">Mplane IP Address</div>
+                    <div class="iv em" id="db-f-mplane-ip-address">—</div>
+                  </div>
+                  <div class="ir">
+                    <div class="il">Netact MRBTS</div>
+                    <div class="iv em" id="db-f-netact-mrbts">—</div>
                   </div>
                 </div>
               </div>
@@ -1186,7 +1208,7 @@
               style="padding:20px;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:200px;text-align:center;">
               <div style="width:48px;height:48px;border-radius:12px;background:var(--accent);display:grid;place-items:center;margin-bottom:16px;color:#fff;font-size:18px;font-weight:700;box-shadow:0 4px 14px rgba(0,113,227,0.3);">CJ</div>
               <h3 style="margin:0 0 5px 0;color:var(--txt-1);font-weight:600;">CJHelper Version <span
-                  id="app-version-display">2.0.2</span></h3>
+                  id="app-version-display">2.0.3</span></h3>
               <p style="font-size:12px;color:var(--txt-3);margin-bottom:20px;">Ensure you are using the latest version for the newest features and bug fixes.</p>
 
               <div id="update-status-container"

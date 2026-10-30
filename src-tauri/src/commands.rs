@@ -11,6 +11,17 @@ use serde_json::Value;
 // A generic row where keys are uppercase column names
 pub type DataFrame = Vec<HashMap<String, String>>;
 
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+pub struct MplaneInfo {
+    pub ip_mplane_bts: String,
+    pub mplane_ip_address: String,
+    pub netact_mrbts: String,
+    pub bsc_name: String,
+    pub circle: String,
+    pub mc_cluster: String,
+    pub name: String,
+}
+
 pub struct AppState {
     pub master_df: Mutex<DataFrame>,
     pub sub_master_df: Mutex<DataFrame>,
@@ -20,6 +31,7 @@ pub struct AppState {
     pub db_te_cache: Mutex<HashMap<String, String>>,
     pub db_indices: Mutex<HashMap<String, usize>>, // Cache for column indices
     pub wa_config: Mutex<serde_json::Value>,
+    pub mplane_lookup: Mutex<HashMap<String, MplaneInfo>>,
 }
 
 impl Default for AppState {
@@ -33,6 +45,7 @@ impl Default for AppState {
             db_te_cache: Mutex::new(HashMap::new()),
             db_indices: Mutex::new(HashMap::new()),
             wa_config: Mutex::new(serde_json::json!({ "saved_groups": [] })),
+            mplane_lookup: Mutex::new(HashMap::new()),
         }
     }
 }
@@ -610,6 +623,67 @@ pub async fn pick_db_file(app: tauri::AppHandle) -> Result<String, String> {
     Ok(path)
 }
 
+/// Normalize an Excel header: collapse all whitespace (incl. \r\n) and uppercase it.
+fn norm_header(h: &str) -> String {
+    h.split_whitespace().collect::<Vec<_>>().join(" ").to_uppercase()
+}
+
+/// Position of the first header that equals `name` (headers must be pre-normalized).
+fn col_of(hdr: &[String], name: &str) -> Option<usize> {
+    hdr.iter().position(|h| h == name)
+}
+
+/// The NEW master DB (db-new.xlsx, sheet "Site") is detected by its "Site ID*" column.
+fn is_new_db_format(hdr: &[String]) -> bool {
+    col_of(hdr, "SITE ID*").is_some()
+}
+
+/// Map the NEW DB columns onto the canonical keys used across the app.
+///
+/// OLD (DB sheet)               ->  NEW (Site sheet)
+///   Site ID MSH                ->  Site ID*
+///   MC                         ->  MC Cluster
+///   Long / Lat                 ->  Longitude / Latitude
+///   TE Name / TE Phone Number  ->  FME CM / Phone Number        (+ Email)
+///   CME Name / Phone / Email   ->  FME PM 1 / Phone Number PM 1 / Email PM 1
+///   FM Office                  ->  FM Office*
+///   TLP Name                   ->  Owner (tower provider)
+///   Site Class                 ->  Site Priority Label
+///   Address                    ->  Site Address
+///   RTS Phone Name             ->  RTS Phone
+fn apply_new_db_schema(hdr: &[String], idx: &mut HashMap<String, usize>) {
+    let map: [(&str, &str); 22] = [
+        ("SITE_ID", "SITE ID*"),
+        ("SITE_NAME", "SITE NAME"),
+        ("OLD_SITE", "OLD SITE ID"),
+        ("VENDOR", "VENDOR"),
+        ("MC", "MC CLUSTER"),
+        ("LAT", "LATITUDE"),
+        ("LON", "LONGITUDE"),
+        ("TE_NAME", "FME CM"),
+        ("TE_PHONE", "PHONE NUMBER"),
+        ("TE_EMAIL", "EMAIL"),
+        ("CME_NAME", "FME PM 1"),
+        ("CME_PHONE", "PHONE NUMBER PM 1"),
+        ("CME_EMAIL", "EMAIL PM 1"),
+        ("FM_OFFICE", "FM OFFICE*"),
+        ("HOST_NAME", "HOST NAME"),
+        ("TLP", "OWNER"),
+        ("SITE_CLASS", "SITE PRIORITY LABEL"),
+        ("HUB_TYPE", "HUB TYPE"),
+        ("AREA", "AREA (IOH)"),
+        ("ADDRESS", "SITE ADDRESS"),
+        ("RTS_NAME", "RTS NAME"),
+        ("RTS_PHONE", "RTS PHONE"),
+    ];
+    for (key, name) in map.iter() {
+        if let Some(i) = col_of(hdr, name) {
+            idx.insert(key.to_string(), i);
+        }
+    }
+    idx.insert("__NEW".to_string(), 1); // marker: new schema active
+}
+
 #[tauri::command]
 pub fn load_db_excel(state: State<'_, AppState>, path: String) -> Result<usize, String> {
     if path.is_empty() { return Ok(0); }
@@ -673,6 +747,16 @@ pub fn load_db_excel(state: State<'_, AppState>, path: String) -> Result<usize, 
             if !db_indices.contains_key("HOST_NAME") { db_indices.insert("HOST_NAME".to_string(), 132); }
             if !db_indices.contains_key("TLP") { db_indices.insert("TLP".to_string(), 50); }
 
+            // NEW DB FORMAT (db-new.xlsx): remap everything explicitly by header name
+            let hdr_norm: Vec<String> = headers.iter().map(|h| norm_header(h)).collect();
+            if is_new_db_format(&hdr_norm) {
+                db_indices.clear();
+                apply_new_db_schema(&hdr_norm, &mut db_indices);
+                site_id_idx = db_indices.get("SITE_ID").cloned();
+                system_name_idx = None;
+                new_site_idx = None;
+            }
+
         } else {
             // OPTIMIZATION: Only convert cells to string once.
             let mut row_vec = Vec::with_capacity(cols_count);
@@ -721,13 +805,115 @@ pub fn load_db_excel(state: State<'_, AppState>, path: String) -> Result<usize, 
 
 
 #[tauri::command]
+pub fn load_mplane_excel(state: State<'_, AppState>, path: String) -> Result<usize, String> {
+    if path.is_empty() { return Ok(0); }
+    let mut workbook = open_workbook_auto(&path).map_err(|e| format!("Gagal membuka file Excel Mplane: {}", e))?;
+    let sheet_names = workbook.sheet_names().to_vec();
+    let sheet_name = sheet_names.iter()
+        .find(|s| s.to_uppercase() == "MRBTS")
+        .cloned()
+        .or_else(|| sheet_names.first().cloned())
+        .ok_or("Sheet tidak ditemukan di file Mplane")?;
+    let range = workbook.worksheet_range(&sheet_name).map_err(|e| e.to_string())?;
+    let (rows_count, _) = range.get_size();
+    if rows_count == 0 { return Ok(0); }
+
+    let mut site_id_idx = None;
+    let mut ip_bts_idx = None;
+    let mut ip_addr_idx = None;
+    let mut netact_idx = None;
+    let mut bsc_idx = None;
+    let mut circle_idx = None;
+    let mut mc_idx = None;
+    let mut name_idx = None;
+
+    let mut mplane_map = HashMap::with_capacity(range.height());
+
+    for (i, row) in range.rows().enumerate() {
+        if i == 0 {
+            for (j, cell) in row.iter().enumerate() {
+                let h = cell.to_string().trim().to_uppercase();
+                if h == "NEW SITE ID" || (h.contains("SITE") && h.contains("ID")) { site_id_idx = Some(j); }
+                else if h == "IP MPLANE BTS" || (h.contains("IP") && h.contains("MPLANE")) { ip_bts_idx = Some(j); }
+                else if h == "MPLANE IP ADDRESS" || (h.contains("MPLANE") && h.contains("ADDRESS")) { ip_addr_idx = Some(j); }
+                else if h == "NETACT MRBTS" || h == "NESCOR MRBTS" || (h.contains("MRBTS") && !h.contains("IP")) { netact_idx = Some(j); }
+                else if h == "BSC NAME" || h.contains("BSC") { bsc_idx = Some(j); }
+                else if h == "CIRCLE ID" || h == "CIRCLE" { circle_idx = Some(j); }
+                else if h == "MC CLUSTER" || h == "MC" { mc_idx = Some(j); }
+                else if h == "NAME" && name_idx.is_none() { name_idx = Some(j); }
+            }
+        } else {
+            let get_col = |opt: Option<usize>| -> String {
+                match opt.and_then(|idx| row.get(idx)) {
+                    Some(Data::String(s)) => s.trim().to_string(),
+                    Some(Data::Float(f)) => if f.fract() == 0.0 { (*f as i64).to_string() } else { f.to_string() },
+                    Some(Data::Int(n)) => n.to_string(),
+                    Some(cell) => cell.to_string().trim().to_string(),
+                    None => String::new(),
+                }
+            };
+
+            let site_id = get_col(site_id_idx).to_uppercase();
+            if !site_id.is_empty() {
+                let info = MplaneInfo {
+                    ip_mplane_bts: get_col(ip_bts_idx),
+                    mplane_ip_address: get_col(ip_addr_idx),
+                    netact_mrbts: get_col(netact_idx),
+                    bsc_name: get_col(bsc_idx),
+                    circle: get_col(circle_idx),
+                    mc_cluster: get_col(mc_idx),
+                    name: get_col(name_idx),
+                };
+                mplane_map.insert(site_id, info);
+            }
+        }
+    }
+
+    let count = mplane_map.len();
+    *state.mplane_lookup.lock().unwrap() = mplane_map;
+    Ok(count)
+}
+
+#[tauri::command]
+pub fn auto_load_default_dbs(state: State<'_, AppState>) -> Result<HashMap<String, usize>, String> {
+    let mut results = HashMap::new();
+    
+    // Check default MPlane file candidates
+    let mplane_files = ["Nokia MRBTS info (1).xlsb", "Nokia MRBTS info.xlsb", "Nokia MRBTS info (1).xlsx", "Nokia MRBTS info.xlsx"];
+    for fname in &mplane_files {
+        if std::path::Path::new(fname).exists() {
+            if let Ok(count) = load_mplane_excel(state.clone(), fname.to_string()) {
+                results.insert("mplane".to_string(), count);
+                break;
+            }
+        }
+    }
+
+    // Check default DB file candidates
+    let db_files = ["db-new.xlsx", "db.xlsx"];
+    for fname in &db_files {
+        if std::path::Path::new(fname).exists() {
+            if let Ok(count) = load_db_excel(state.clone(), fname.to_string()) {
+                results.insert("db".to_string(), count);
+                break;
+            }
+        }
+    }
+
+    Ok(results)
+}
+
+#[tauri::command]
 pub fn lookup_site(state: State<'_, AppState>, site_id: String) -> Result<Option<HashMap<String, String>>, String> {
     let db = state.db_df.lock().unwrap();
     let db_lookup = state.db_lookup.lock().unwrap();
     let headers = state.db_headers.lock().unwrap();
     let idx_cache = state.db_indices.lock().unwrap();
+    let mplane_map = state.mplane_lookup.lock().unwrap();
     
     let sid = site_id.trim().to_uppercase();
+    let mplane_info = mplane_map.get(&sid);
+
     if let Some(&idx) = db_lookup.get(&sid) {
         if let Some(row_vec) = db.get(idx) {
             let mut out = HashMap::new();
@@ -753,33 +939,61 @@ pub fn lookup_site(state: State<'_, AppState>, site_id: String) -> Result<Option
             let fm_idx = idx_cache.get("FM_OFFICE").cloned().unwrap_or(11);
             let tlp_idx = idx_cache.get("TLP").cloned().unwrap_or(50);
             
-            out.insert("Site ID (New)".to_string(), g("Site ID MSH"));
-            out.insert("Old Site ID".to_string(), g("Old Site ID"));
-            out.insert("Site Name".to_string(), g("Site Name"));
+            // Schema-aware getter: new DB -> canonical index, old DB -> legacy header name
+            let is_new = idx_cache.contains_key("__NEW");
+            let gk = |key: &str, legacy: &str| -> String {
+                if is_new {
+                    idx_cache.get(key).map(|&i| g_idx(i)).unwrap_or_default()
+                } else {
+                    g(legacy)
+                }
+            };
+
+            out.insert("Site ID (New)".to_string(), gk("SITE_ID", "Site ID MSH"));
+            out.insert("Old Site ID".to_string(), gk("OLD_SITE", "Old Site ID"));
+            out.insert("Site Name".to_string(), gk("SITE_NAME", "Site Name"));
             out.insert("Host Name".to_string(), g_idx(host_idx));
-            out.insert("Cluster (MC)".to_string(), g("MC"));
+            out.insert("Cluster (MC)".to_string(), gk("MC", "MC"));
             out.insert("FM Office".to_string(), g_idx(fm_idx));
-            out.insert("Area".to_string(), g("Area"));
-            out.insert("Vendor".to_string(), g("Vendor"));
+            out.insert("Area".to_string(), gk("AREA", "Area"));
+            out.insert("Vendor".to_string(), gk("VENDOR", "Vendor"));
             out.insert("TE Name".to_string(), g_idx(te_idx));
             out.insert("TE Phone".to_string(), g_idx(ph_idx));
             out.insert("TE Email".to_string(), g_idx(em_idx));
-            out.insert("Longitude".to_string(), g("Long"));
-            out.insert("Latitude".to_string(), g("Lat"));
-            out.insert("RTS Name".to_string(), g("RTS Name"));
-            out.insert("RTS Phone".to_string(), g("RTS Phone Name"));
+            out.insert("Longitude".to_string(), gk("LON", "Long"));
+            out.insert("Latitude".to_string(), gk("LAT", "Lat"));
+            out.insert("RTS Name".to_string(), gk("RTS_NAME", "RTS Name"));
+            out.insert("RTS Phone".to_string(), gk("RTS_PHONE", "RTS Phone Name"));
             out.insert("CME Name".to_string(), g_idx(cme_name_idx));
             out.insert("CME Phone".to_string(), g_idx(cme_phone_idx));
             out.insert("CME Email".to_string(), g_idx(cme_email_idx));
-            out.insert("Site Class".to_string(), g("Site Class"));
-            out.insert("Hub Type".to_string(), g("Hub Type"));
-            out.insert("Address".to_string(), g("Address"));
-            out.insert("RTS Email".to_string(), g("RTS Email"));
-            out.insert("RTS NEW".to_string(), g("RTS NEW"));
+            out.insert("Site Class".to_string(), gk("SITE_CLASS", "Site Class"));
+            out.insert("Hub Type".to_string(), gk("HUB_TYPE", "Hub Type"));
+            out.insert("Address".to_string(), gk("ADDRESS", "Address"));
+            out.insert("RTS Email".to_string(), gk("RTS_EMAIL", "RTS Email"));
+            out.insert("RTS NEW".to_string(), gk("RTS_NEW", "RTS NEW"));
             out.insert("TLP".to_string(), g_idx(tlp_idx));
-            
+
+            if let Some(mp) = mplane_info {
+                out.insert("IP Mplane BTS".to_string(), mp.ip_mplane_bts.clone());
+                out.insert("Mplane IP Address".to_string(), mp.mplane_ip_address.clone());
+                out.insert("Netact MRBTS".to_string(), mp.netact_mrbts.clone());
+                out.insert("BSC Name".to_string(), mp.bsc_name.clone());
+            }
+
             return Ok(Some(out));
         }
+    } else if let Some(mp) = mplane_info {
+        let mut out = HashMap::new();
+        out.insert("Site ID (New)".to_string(), sid.clone());
+        out.insert("Site Name".to_string(), mp.name.clone());
+        out.insert("Cluster (MC)".to_string(), mp.mc_cluster.clone());
+        out.insert("Area".to_string(), mp.circle.clone());
+        out.insert("IP Mplane BTS".to_string(), mp.ip_mplane_bts.clone());
+        out.insert("Mplane IP Address".to_string(), mp.mplane_ip_address.clone());
+        out.insert("Netact MRBTS".to_string(), mp.netact_mrbts.clone());
+        out.insert("BSC Name".to_string(), mp.bsc_name.clone());
+        return Ok(Some(out));
     }
     Ok(None)
 }
@@ -1093,6 +1307,14 @@ pub fn load_te_contacts_excel(app: tauri::AppHandle, path: String) -> Result<usi
     // Read headers
     for (i, row) in range.rows().enumerate() {
         if i == 0 {
+            let hdr_norm: Vec<String> = row.iter().map(|c| norm_header(&c.to_string())).collect();
+            if is_new_db_format(&hdr_norm) {
+                // db-new.xlsx: TE = FME CM, cluster = FM Office*
+                te_name_idx = col_of(&hdr_norm, "FME CM");
+                te_phone_idx = col_of(&hdr_norm, "PHONE NUMBER");
+                cluster_idx = col_of(&hdr_norm, "FM OFFICE*");
+                break;
+            }
             for (j, cell) in row.iter().enumerate() {
                 let h = cell.to_string().trim().to_uppercase();
                 if h == "TE NAME" || h == "TE_NAME" || h == "PIC" { te_name_idx = Some(j); }
@@ -1242,7 +1464,10 @@ pub fn update_site_db(state: State<'_, AppState>, edit_data: SiteEditData) -> Re
     
     if db.is_empty() { return Err("DB kosong".into()); }
     
-    let key_idx = headers.iter().position(|h| h.contains("SITE ID MSH")).ok_or("Kolom SITE ID MSH tidak ditemukan")?;
+    let is_new = idx_cache.contains_key("__NEW");
+    let key_idx = idx_cache.get("SITE_ID").cloned()
+        .or_else(|| headers.iter().position(|h| h.contains("SITE ID MSH")))
+        .ok_or("Kolom Site ID (SITE ID MSH / Site ID*) tidak ditemukan")?;
     let sid_upper = edit_data.site_id.to_uppercase();
     
     for row_vec in db.iter_mut() {
@@ -1277,18 +1502,29 @@ pub fn update_site_db(state: State<'_, AppState>, edit_data: SiteEditData) -> Re
                     }
                 };
 
-                try_update_raw(row_vec, "OLD SITE", &edit_data.old_site_id);
-                try_update_raw(row_vec, "SITE CLASS", &edit_data.site_class);
-                try_update_raw(row_vec, "AREA", &edit_data.area);
-                try_update_raw(row_vec, "HUB TYPE", &edit_data.hub_type);
-                try_update_raw(row_vec, "ADDRESS", &edit_data.address);
-                try_update_raw(row_vec, "RTS NAME", &edit_data.rts_name);
-                try_update_raw(row_vec, "RTS EMAIL", &edit_data.rts_email);
-                try_update_raw(row_vec, "RTS PHONE", &edit_data.rts_phone);
-                try_update_raw(row_vec, "RTS NEW", &edit_data.rts_new);
-                try_update_raw(row_vec, "CME NAME", &edit_data.cme_name);
-                try_update_raw(row_vec, "CME PHONE", &edit_data.cme_phone);
-                try_update_raw(row_vec, "CME EMAIL", &edit_data.cme_email);
+                if is_new {
+                    // New schema: write by canonical index (no fuzzy header matching)
+                    update_field(row_vec, "OLD_SITE", &edit_data.old_site_id);
+                    update_field(row_vec, "SITE_CLASS", &edit_data.site_class);
+                    update_field(row_vec, "AREA", &edit_data.area);
+                    update_field(row_vec, "HUB_TYPE", &edit_data.hub_type);
+                    update_field(row_vec, "ADDRESS", &edit_data.address);
+                    update_field(row_vec, "RTS_NAME", &edit_data.rts_name);
+                    update_field(row_vec, "RTS_PHONE", &edit_data.rts_phone);
+                } else {
+                    try_update_raw(row_vec, "OLD SITE", &edit_data.old_site_id);
+                    try_update_raw(row_vec, "SITE CLASS", &edit_data.site_class);
+                    try_update_raw(row_vec, "AREA", &edit_data.area);
+                    try_update_raw(row_vec, "HUB TYPE", &edit_data.hub_type);
+                    try_update_raw(row_vec, "ADDRESS", &edit_data.address);
+                    try_update_raw(row_vec, "RTS NAME", &edit_data.rts_name);
+                    try_update_raw(row_vec, "RTS EMAIL", &edit_data.rts_email);
+                    try_update_raw(row_vec, "RTS PHONE", &edit_data.rts_phone);
+                    try_update_raw(row_vec, "RTS NEW", &edit_data.rts_new);
+                    try_update_raw(row_vec, "CME NAME", &edit_data.cme_name);
+                    try_update_raw(row_vec, "CME PHONE", &edit_data.cme_phone);
+                    try_update_raw(row_vec, "CME EMAIL", &edit_data.cme_email);
+                }
                 
                 // Update active in-memory TE cache
                 let mut te_cache = state.db_te_cache.lock().unwrap();
@@ -1340,10 +1576,10 @@ pub fn reassign_te_db(
         let te_phone_idx = idx_cache.get("TE_PHONE").cloned();
         let cluster_idx = idx_cache.get("MC").or_else(|| idx_cache.get("FM_OFFICE")).cloned();
         let site_name_idx = idx_cache.get("SITE_NAME").cloned();
-        let site_id_idx = headers.iter().position(|h| {
+        let site_id_idx = idx_cache.get("SITE_ID").cloned().or_else(|| headers.iter().position(|h| {
             let hu = h.to_uppercase();
             hu.contains("SITE ID MSH") || (hu.contains("SITE") && hu.contains("ID"))
-        });
+        }));
 
         if let Some(t_idx) = te_name_idx {
             for row in db.iter_mut() {
@@ -1760,10 +1996,10 @@ pub fn find_nearest_sites(state: State<'_, AppState>, lat: f64, lon: f64, limit:
     let (lat_idx, lon_idx) = (lat_idx.unwrap(), lon_idx.unwrap());
     
     // Find Site ID column index case-insensitively
-    let sid_idx = headers.iter().position(|h| {
+    let sid_idx = idx_cache.get("SITE_ID").cloned().or_else(|| headers.iter().position(|h| {
         let hu = h.to_uppercase();
         hu.contains("SITE") && hu.contains("ID") && hu.contains("MSH")
-    }).or_else(|| {
+    })).or_else(|| {
         headers.iter().position(|h| {
             let hu = h.to_uppercase();
             hu.contains("SITE ID") || hu.contains("NEW SITE")

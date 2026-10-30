@@ -38,7 +38,9 @@ pub fn run() {
             save_changes_json_file,
             read_json_file,
             apply_site_changes,
-            handover_sites_batch
+            handover_sites_batch,
+            load_mplane_excel,
+            auto_load_default_dbs
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

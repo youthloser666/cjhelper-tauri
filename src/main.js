@@ -444,6 +444,23 @@ if (btnDashImportContact) {
   });
 }
 
+// Handler for importing Nokia MPlane Excel (.xlsb / .xlsx)
+async function handleImportMplane() {
+  try {
+    const selectedPath = await invoke('pick_db_file');
+    if (selectedPath) {
+      const fileName = selectedPath.split(/[\\/]/).pop();
+      const count = await invoke('load_mplane_excel', { path: selectedPath });
+      alert(`✅ Berhasil memuat ${count} data Nokia Mplane dari ${fileName}!`);
+    }
+  } catch (err) {
+    alert("Gagal mengimpor Nokia Mplane: " + err);
+  }
+}
+
+document.getElementById('btn-dash-import-mplane')?.addEventListener('click', handleImportMplane);
+document.getElementById('btn-db-import-mplane')?.addEventListener('click', handleImportMplane);
+
 document.getElementById('btn-reset-snap').addEventListener('click', async () => {
   try {
     await invoke('reset_snapshot');
@@ -1155,7 +1172,10 @@ const dbFields = {
   'te-email': document.getElementById('db-f-te-email'),
   'cme-name': document.getElementById('db-f-cme-name'),
   'cme-phone': document.getElementById('db-f-cme-phone'),
-  'cme-email': document.getElementById('db-f-cme-email')
+  'cme-email': document.getElementById('db-f-cme-email'),
+  'ip-mplane-bts': document.getElementById('db-f-ip-mplane-bts'),
+  'mplane-ip-address': document.getElementById('db-f-mplane-ip-address'),
+  'netact-mrbts': document.getElementById('db-f-netact-mrbts')
 };
 
 let lastDbRow = null;
@@ -1196,6 +1216,9 @@ function buildDbCopyText(row) {
     `CME Name: ${get('CME Name')}`,
     `CME Phone: ${get('CME Phone')}`,
     `CME Email: ${get('CME Email')}`,
+    `IP Mplane BTS: ${get('IP Mplane BTS')}`,
+    `Mplane IP Address: ${get('Mplane IP Address')}`,
+    `Netact MRBTS: ${get('Netact MRBTS')}`,
   ];
   return lines.join('\n');
 }
@@ -1252,6 +1275,26 @@ btnDbSearch.addEventListener('click', async () => {
     setVal('cme-name', get('CME Name'));
     setVal('cme-phone', get('CME Phone'));
     setVal('cme-email', get('CME Email'));
+
+    setVal('ip-mplane-bts', get('IP Mplane BTS'));
+    setVal('netact-mrbts', get('Netact MRBTS'));
+
+    // Handle Mplane IP Address with clickable link
+    const mplaneAddr = get('Mplane IP Address');
+    const elMplane = dbFields['mplane-ip-address'];
+    if (elMplane) {
+      if (mplaneAddr && mplaneAddr !== '—') {
+        elMplane.innerHTML = `<a href="#" class="mplane-open-link" style="color:var(--accent);text-decoration:underline;font-family:var(--mono);">${mplaneAddr}</a>`;
+        elMplane.classList.remove('em');
+        elMplane.querySelector('.mplane-open-link')?.addEventListener('click', (e) => {
+          e.preventDefault();
+          invoke('open_url', { url: mplaneAddr });
+        });
+      } else {
+        elMplane.textContent = '—';
+        elMplane.classList.add('em');
+      }
+    }
 
   } catch (e) {
     dbSearchStatus.textContent = `Error: ${e}`;
@@ -3863,15 +3906,19 @@ function saveBlastFilterCfg() {
 
 function cleanWaNumber(num) {
   if (!num) return "";
-  let cleaned = num.toString().replace(/\D/g, '');
+  // Ambil nomor pertama jika ada beberapa (dipisah / , ; atau spasi ganda)
+  let cleaned = num.toString().split(/[\/,;]/)[0].replace(/\D/g, '');
+  if (cleaned.startsWith('00')) cleaned = cleaned.substring(2);        // 0062812... -> 62812...
+  if (cleaned.startsWith('620')) cleaned = '62' + cleaned.substring(3); // 62081... -> 6281...
   if (cleaned.startsWith('0')) {
     cleaned = '62' + cleaned.substring(1);
   } else if (cleaned.startsWith('8')) {
     cleaned = '62' + cleaned;
   }
   if (cleaned.length < 8) return "";
-  return cleaned + "@c.us";
+  return cleaned + "@s.whatsapp.net";
 }
+
 
 function shouldSendToTe(remark) {
   if (!blastFilterCfg.filterRemarkTrigger) {
@@ -5636,6 +5683,8 @@ if (btnExecuteWaBlastTe) {
           if (statusCell) {
             statusCell.textContent = "❌ Failed";
             statusCell.style.color = "var(--red)";
+            const reason = result && Array.isArray(result.results) && result.results[0] && result.results[0].error;
+            if (reason) statusCell.title = reason;
           }
         }
       } catch (err) {
@@ -5951,6 +6000,19 @@ SiteChangesManager.init();
 let frMasterRows = [];
 let frManualPgList = [];
 let frActiveRegion = 'ALL'; // 'ALL' | 'CJN' | 'CJS'
+let frActiveImpact = 'FULLY'; // 'FULLY' | 'ALL'
+
+// Helper to get filtered rows by region and impact
+function getFilteredFrRows() {
+  let rows = frMasterRows;
+  if (frActiveImpact === 'FULLY') {
+    rows = rows.filter(r => r.isFully);
+  }
+  if (frActiveRegion !== 'ALL') {
+    rows = rows.filter(r => r.region === frActiveRegion);
+  }
+  return rows;
+}
 
 // 1. Subtab Switching in Tab-Flash
 const frSubBtns = document.querySelectorAll('#flash-subtab-seg .seg-btn');
@@ -5990,6 +6052,20 @@ frRegBtns.forEach(btn => {
       else if (frActiveRegion === 'CJS') titleInput.value = 'Central Java South';
       else titleInput.value = 'Central Java';
     }
+
+    renderFrMasterTable();
+    updateFrStats();
+    renderFlashReportPreview();
+  });
+});
+
+// 2b. Impact Filter Selector (Fully Down Only vs All)
+const frImpBtns = document.querySelectorAll('.fr-imp-btn');
+frImpBtns.forEach(btn => {
+  btn.addEventListener('click', () => {
+    frImpBtns.forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    frActiveImpact = btn.dataset.imp || 'FULLY';
 
     renderFrMasterTable();
     updateFrStats();
@@ -6110,6 +6186,11 @@ function parseFlashMasterTSV(text) {
     const remLow = remark.toLowerCase();
     const matchesFilter = remLow.includes('otw') || remLow.includes('onsite') || remLow.includes('priority');
 
+    // Determine Fully Down status
+    const impLower = impact.toLowerCase();
+    const isCell = impLower.includes('cell');
+    const isFully = impLower.includes('fully') || impLower.includes('sitedown') || (!isCell && (impLower.includes('down') || !impact));
+
     parsed.push({
       siteId,
       siteName,
@@ -6118,7 +6199,8 @@ function parseFlashMasterTSV(text) {
       netLabel,
       is2G,
       is4G,
-      impact,
+      impact: impact || (isFully ? 'Fully Down' : 'Cell Down'),
+      isFully,
       remark,
       region,
       matchesFilter
@@ -6135,10 +6217,7 @@ function renderFrMasterTable() {
   if (!tbody) return;
 
   tbody.innerHTML = '';
-  let filtered = frMasterRows;
-  if (frActiveRegion !== 'ALL') {
-    filtered = filtered.filter(r => r.region === frActiveRegion);
-  }
+  let filtered = getFilteredFrRows();
 
   if (lblCount) lblCount.textContent = `${filtered.length} sites`;
 
@@ -6172,24 +6251,44 @@ function renderFrMasterTable() {
   });
 }
 
+// Helper: Asynchronously enrich Flash Master Rows with DB info (Hub Type, FM Office, Site Name)
+async function enrichFrMasterRows() {
+  if (typeof invoke !== 'function') return;
+  let changed = false;
+  for (const r of frMasterRows) {
+    if (r.matchesFilter && (!r.hubType || !r.fmOffice)) {
+      try {
+        const dbData = await invoke('lookup_site', { siteId: r.siteId });
+        if (dbData) {
+          if (!r.hubType) r.hubType = dbData['Hub Type'] || dbData['Site Class'] || 'SMALL HUB SITE';
+          if (!r.fmOffice) r.fmOffice = dbData['FM Office'] || dbData['Cluster (MC)'] || r.cluster;
+          if (dbData['Site Name'] && (!r.siteName || r.siteName === r.siteId)) {
+            r.siteName = dbData['Site Name'];
+          }
+          changed = true;
+        }
+      } catch (e) {}
+    }
+  }
+  if (changed) {
+    renderFlashReportPreview();
+  }
+}
+
 // 6. Update Stats
 function updateFrStats() {
-  let rows = frMasterRows;
-  if (frActiveRegion !== 'ALL') {
-    rows = rows.filter(r => r.region === frActiveRegion);
-  }
+  let rows = getFilteredFrRows();
 
   const mcSet = new Set();
-  let count2g = 0;
-  let count4g = 0;
   let matchedCount = 0;
 
   rows.forEach(r => {
     if (r.mcCluster && r.mcCluster.trim()) mcSet.add(r.mcCluster.trim());
-    if (r.is2G) count2g++;
-    if (r.is4G) count4g++;
     if (r.matchesFilter) matchedCount++;
   });
+
+  // Default Site Down 2G & 4G follows total sites down from Master Table
+  const defaultSiteDown = rows.length;
 
   const elTotal = document.getElementById('fr-stat-total');
   const elMc = document.getElementById('fr-stat-mc');
@@ -6200,20 +6299,20 @@ function updateFrStats() {
 
   if (elTotal) elTotal.textContent = rows.length;
   if (elMc) elMc.textContent = mcSet.size;
-  if (el2g) el2g.textContent = count2g;
-  if (el4g) el4g.textContent = count4g;
+  if (el2g) el2g.textContent = defaultSiteDown;
+  if (el4g) el4g.textContent = defaultSiteDown;
   if (elMatched) elMatched.textContent = matchedCount + frManualPgList.length;
 
   if (elHeadSummary) {
-    elHeadSummary.textContent = `${mcSet.size} MC Impact • 2G: ${count2g} | 4G: ${count4g}`;
+    elHeadSummary.textContent = `${mcSet.size} MC Impact • 2G: ${defaultSiteDown} | 4G: ${defaultSiteDown}`;
   }
 
   // Update Additional Info Site Down Inputs automatically
   const inp2g = document.getElementById('fr-input-2g');
   const inp4g = document.getElementById('fr-input-4g');
   if (inp2g && inp4g) {
-    inp2g.value = count2g;
-    inp4g.value = count4g;
+    inp2g.value = defaultSiteDown;
+    inp4g.value = defaultSiteDown;
   }
 }
 
@@ -6260,10 +6359,7 @@ function generateFlashReportText() {
   const timeStr = (document.getElementById('fr-time-input')?.value || '21:00').trim();
   const titleRegion = (document.getElementById('fr-title-input')?.value || 'Central Java').trim();
 
-  let rows = frMasterRows;
-  if (frActiveRegion !== 'ALL') {
-    rows = rows.filter(r => r.region === frActiveRegion);
-  }
+  let rows = getFilteredFrRows();
 
   const mcSet = new Set();
   rows.forEach(r => {
@@ -6272,7 +6368,7 @@ function generateFlashReportText() {
   const mcList = Array.from(mcSet);
   const mcCount = mcList.length;
 
-  const sepFormat = document.getElementById('fr-mc-format')?.value || 'compact';
+  const sepFormat = document.getElementById('fr-mc-format')?.value || 'comma';
   let mcStr = '';
   if (sepFormat === 'compact') {
     mcStr = mcList.join('');
@@ -6281,11 +6377,12 @@ function generateFlashReportText() {
   } else if (sepFormat === 'space') {
     mcStr = mcList.join(' ');
   } else {
-    mcStr = mcList.join(', ');
+    // Default comma separated with trailing comma like in template
+    mcStr = mcList.length > 0 ? (mcList.join(', ') + ', ') : '';
   }
 
-  const count2g = document.getElementById('fr-input-2g')?.value || 0;
-  const count4g = document.getElementById('fr-input-4g')?.value || 0;
+  const count2g = document.getElementById('fr-input-2g')?.value ?? rows.length;
+  const count4g = document.getElementById('fr-input-4g')?.value ?? rows.length;
   const dgRunning = document.getElementById('fr-dg-running')?.value || 0;
   const dgTotal = document.getElementById('fr-dg-total')?.value || 0;
 
@@ -6293,39 +6390,62 @@ function generateFlashReportText() {
   const posPgLines = [];
   rows.forEach(r => {
     if (r.matchesFilter) {
-      const reg = r.region || 'CJS';
-      const clusterVal = (r.cluster || r.mcCluster || '').trim();
-      const clusterFormatted = clusterVal.startsWith('(blank)') ? clusterVal : `(blank)${clusterVal}`;
-      posPgLines.push(`${reg} | ${clusterFormatted} / ${r.siteId} / ${r.siteName} / ${r.remark} | `);
+      const clusterVal = (r.fmOffice || r.cluster || r.mcCluster || '-').trim();
+      const siteNameClean = (r.siteName || '').trim();
+      const siteIdClean = (r.siteId || '').trim();
+      const combinedSite = (siteNameClean && siteNameClean.toUpperCase().includes(siteIdClean.toUpperCase()))
+        ? siteNameClean
+        : `${siteIdClean}_${siteNameClean || siteIdClean}`;
+      const hubVal = (r.hubType || r.category || 'SMALL HUB SITE').trim();
+      const remVal = (r.remark || '-').trim();
+      posPgLines.push(`- ${clusterVal} / ${combinedSite} / ${hubVal} | ${remVal}`);
     }
   });
 
   frManualPgList.forEach(m => {
-    const reg = m.region || 'CJS';
-    const clusterVal = (m.cluster || '').trim();
-    const clusterFormatted = clusterVal.startsWith('(blank)') ? clusterVal : `(blank)${clusterVal}`;
-    posPgLines.push(`${reg} | ${clusterFormatted} / ${m.siteId} / ${m.siteName} / ${m.remark} | `);
+    const clusterVal = (m.fmOffice || m.cluster || '-').trim();
+    const siteNameClean = (m.siteName || '').trim();
+    const siteIdClean = (m.siteId || '').trim();
+    const combinedSite = (siteNameClean && siteNameClean.toUpperCase().includes(siteIdClean.toUpperCase()))
+      ? siteNameClean
+      : `${siteIdClean}_${siteNameClean || siteIdClean}`;
+    const hubVal = (m.hubType || 'SMALL HUB SITE').trim();
+    const remVal = (m.remark || '-').trim();
+    posPgLines.push(`- ${clusterVal} / ${combinedSite} / ${hubVal} | ${remVal}`);
   });
 
+  const teamMove = (document.getElementById('fr-team-move')?.value || '').trim();
   const pgCompleted = (document.getElementById('fr-pg-completed')?.value || '').trim() || '0';
   const pgInstalled = (document.getElementById('fr-pg-installed')?.value || '').trim() || '0';
   const pgMovement = (document.getElementById('fr-pg-movement')?.value || '').trim() || '0';
 
-  let out = `${timeStr}\n\n\n`;
-  out += `*Template flash report: ${titleRegion}*\n\n`;
+  let summaryPg = '';
+  if (teamMove) {
+    summaryPg = `Team Move : ${teamMove} | PG Completed : ${pgCompleted} | PG Installed : ${pgInstalled} | PG Movement : ${pgMovement}`;
+  } else {
+    summaryPg = `PG Completed : ${pgCompleted} | PG Installed : ${pgInstalled} | PG Movement : ${pgMovement}`;
+  }
+
+  // Format date: e.g. 30-Oct-2026
+  const now = new Date();
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const day = String(now.getDate()).padStart(2, '0');
+  const month = months[now.getMonth()];
+  const year = now.getFullYear();
+  const dateFormatted = `${day}-${month}-${year}`;
+
+  let out = `${timeStr}\n\n`;
+  out += `*Template flash report: ${titleRegion} ${dateFormatted} ${timeStr}*\n\n\n`;
   out += `==================\n`;
   out += `🔷 *MC impact:  ${mcCount} MC*\n`;
   out += `${mcStr || '(Belum ada MC impact)'}\n\n`;
-  out += `🔷 *SITE DOWN:*\n`;
-  out += `🔹 2G: ${count2g}\n`;
-  out += `🔹 4G: ${count4g}\n\n`;
+  out += `🔷 *SITE DOWN :*\n`;
+  out += `🔹 *2G : ${count2g}*\n`;
+  out += `🔹 *4G : ${count4g}*\n\n`;
   out += `🔷 *DG Status*\n`;
-  out += `🔹 ${dgRunning} of ${dgTotal} running\n\n`;
-  out += `🔷 *POSISION PG*\n\n`;
-  out += `🔹 PG Completed : ${pgCompleted}\n`;
-  out += `🔹 PG installed : ${pgInstalled}\n`;
-  out += `🔹 PG Movement  : ${pgMovement}\n\n`;
+  out += `🔹 ${dgRunning} of ${dgTotal} Running*\n\n`;
   out += `🔷 *POSISION PG*\n`;
+  out += `${summaryPg}\n`;
 
   if (posPgLines.length > 0) {
     out += posPgLines.join('\n') + '\n';
@@ -6352,27 +6472,30 @@ function renderFlashReportPreview() {
 // 10. Bind Actions & Listeners
 const btnFrProcess = document.getElementById('btn-fr-process');
 if (btnFrProcess) {
-  btnFrProcess.addEventListener('click', () => {
+  btnFrProcess.addEventListener('click', async () => {
     const txt = (document.getElementById('fr-txt-master')?.value || '').trim();
     if (!txt) {
       alert('Silakan paste data TSV Master Table terlebih dahulu!');
       return;
     }
     frMasterRows = parseFlashMasterTSV(txt);
+    const fullyCount = frMasterRows.filter(r => r.isFully).length;
+    const cellCount = frMasterRows.length - fullyCount;
     const statusLbl = document.getElementById('fr-master-status');
     if (statusLbl) {
-      statusLbl.textContent = `✅ Berhasil memproses ${frMasterRows.length} baris Master Table.`;
+      statusLbl.textContent = `✅ Berhasil memproses ${frMasterRows.length} baris (${fullyCount} Fully Down, ${cellCount} Cell Down).`;
       statusLbl.style.color = 'var(--grn)';
     }
     renderFrMasterTable();
     updateFrStats();
     renderFlashReportPreview();
+    await enrichFrMasterRows();
   });
 }
 
 const btnFrLoadMain = document.getElementById('btn-fr-load-main');
 if (btnFrLoadMain) {
-  btnFrLoadMain.addEventListener('click', () => {
+  btnFrLoadMain.addEventListener('click', async () => {
     // 1. Try from txtMaster if available
     const txtMain = (document.getElementById('txt-master')?.value || '').trim();
     if (txtMain) {
@@ -6382,15 +6505,21 @@ if (btnFrLoadMain) {
       // 2. Or map from statusData
       frMasterRows = statusData.map(s => {
         const remLow = (s.remark || '').toLowerCase();
+        const impLower = (s.impact || s.status || '').toLowerCase();
+        const isCell = impLower.includes('cell');
+        const isFully = s.is_netdrone || impLower.includes('fully') || impLower.includes('sitedown') || (!isCell && (s.status === 'DOWN' || impLower.includes('down')));
         return {
           siteId: s.new_site || s.site_id || '',
           siteName: s.site_name || '',
           mcCluster: s.cluster || '',
           cluster: s.cluster || '',
+          fmOffice: s.cluster || '',
+          hubType: s.category || s.hub_type || 'SMALL HUB SITE',
           netLabel: (s.category && s.category.includes('2G')) ? '2G' : '4G',
           is2G: (s.category && s.category.includes('2G')),
           is4G: !(s.category && s.category.includes('2G')),
           impact: s.impact || s.status || '',
+          isFully,
           remark: s.remark || '',
           region: (typeof getSiteRegion === 'function') ? getSiteRegion(s) : 'CJN',
           matchesFilter: remLow.includes('otw') || remLow.includes('onsite') || remLow.includes('priority')
@@ -6401,15 +6530,18 @@ if (btnFrLoadMain) {
       return;
     }
 
+    const fullyCount = frMasterRows.filter(r => r.isFully).length;
+    const cellCount = frMasterRows.length - fullyCount;
     const statusLbl = document.getElementById('fr-master-status');
     if (statusLbl) {
-      statusLbl.textContent = `✅ Dimuat ${frMasterRows.length} baris dari Master Data utama.`;
+      statusLbl.textContent = `✅ Dimuat ${frMasterRows.length} baris (${fullyCount} Fully Down, ${cellCount} Cell Down) dari Master Data.`;
       statusLbl.style.color = 'var(--accent)';
     }
 
     renderFrMasterTable();
     updateFrStats();
     renderFlashReportPreview();
+    await enrichFrMasterRows();
   });
 }
 
@@ -6441,6 +6573,8 @@ if (btnFrAddManual) {
 
     let siteName = '';
     let cluster = '';
+    let fmOffice = '';
+    let hubType = 'SMALL HUB SITE';
     let region = 'CJS';
 
     // 1. First look up from SQLite DB if available
@@ -6450,6 +6584,8 @@ if (btnFrAddManual) {
         if (row) {
           siteName = row['Site Name'] || row.site_name || '';
           cluster = row['FM Office'] || row['Cluster (MC)'] || row.cluster || '';
+          fmOffice = row['FM Office'] || cluster;
+          hubType = row['Hub Type'] || row['Site Class'] || 'SMALL HUB SITE';
           const area = (row['Area'] || row['Region'] || '').toUpperCase();
           if (area.includes('CJN') || area.includes('NORTH')) {
             region = 'CJN';
@@ -6468,6 +6604,8 @@ if (btnFrAddManual) {
       if (matchMaster) {
         siteName = matchMaster.siteName || '';
         cluster = matchMaster.cluster || matchMaster.mcCluster || cluster;
+        fmOffice = matchMaster.fmOffice || cluster;
+        hubType = matchMaster.hubType || hubType;
         region = matchMaster.region || region;
       }
     }
@@ -6478,6 +6616,8 @@ if (btnFrAddManual) {
       if (matchStatus) {
         siteName = matchStatus.site_name || '';
         cluster = matchStatus.cluster || cluster;
+        fmOffice = cluster;
+        hubType = matchStatus.category || hubType;
         const sReg = (matchStatus.region || matchStatus.area || '').toUpperCase();
         if (sReg.includes('CJN') || sReg.includes('NORTH')) region = 'CJN';
         else if (sReg.includes('CJS') || sReg.includes('SOUTH')) region = 'CJS';
@@ -6495,6 +6635,8 @@ if (btnFrAddManual) {
     frManualPgList.push({
       region,
       cluster,
+      fmOffice: fmOffice || cluster,
+      hubType,
       siteId,
       siteName,
       remark: remark || '-'
@@ -6535,13 +6677,13 @@ if (btnFrSyncSiteDown) {
     const r = document.getElementById('fr-dg-running')?.value || 0;
     const t = document.getElementById('fr-dg-total')?.value || 0;
     const lbl = document.getElementById('lbl-dg-preview');
-    if (lbl) lbl.textContent = `${r} of ${t} running`;
+    if (lbl) lbl.textContent = `${r} of ${t} Running*`;
     renderFlashReportPreview();
   });
 });
 
 // Sync inputs to preview on change
-['fr-input-2g', 'fr-input-4g', 'fr-time-input', 'fr-title-input', 'fr-mc-format', 'fr-pg-completed', 'fr-pg-installed', 'fr-pg-movement'].forEach(id => {
+['fr-team-move', 'fr-input-2g', 'fr-input-4g', 'fr-time-input', 'fr-title-input', 'fr-mc-format', 'fr-pg-completed', 'fr-pg-installed', 'fr-pg-movement'].forEach(id => {
   document.getElementById(id)?.addEventListener('input', renderFlashReportPreview);
   document.getElementById(id)?.addEventListener('change', renderFlashReportPreview);
 });
@@ -6578,6 +6720,30 @@ if (btnFrCopy) {
     }
     now.setMinutes(0, 0, 0);
     timeInp.value = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }).replace(/\./g, ':');
+  }
+})();
+
+// Auto-load default databases on startup if present in current directory
+(async () => {
+  try {
+    if (typeof invoke === 'function') {
+      const res = await invoke('auto_load_default_dbs');
+      if (res && res.db) {
+        console.log(`Auto-loaded default Master DB: ${res.db} rows`);
+        const lblDash = document.getElementById('lbl-dash-db-filename');
+        if (lblDash) {
+          lblDash.textContent = `📁 db-new.xlsx (${res.db} baris)`;
+          lblDash.style.color = "var(--accent-lit)";
+        }
+        const dashDb = document.getElementById('dash-db');
+        if (dashDb) dashDb.textContent = res.db;
+      }
+      if (res && res.mplane) {
+        console.log(`Auto-loaded Nokia Mplane DB: ${res.mplane} sites`);
+      }
+    }
+  } catch (e) {
+    console.warn("auto_load_default_dbs:", e);
   }
 })();
 

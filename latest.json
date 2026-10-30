@@ -1,11 +1,11 @@
 {
-  "version": "2.0.2",
-  "notes": "Release v2.0.2: Auto-reconnect WhatsApp saat status 401/logout, penambahan tombol Reset WA di modal status, dan ekspansi tampilan preview Flash Report penuh ke bawah.",
-  "pub_date": "2026-09-14T02:40:00Z",
+  "version": "2.0.3",
+  "notes": "Release v2.0.3: Format baru output Flash Report, integrasi database MPlane IP Address Nokia MRBTS (.xlsb), dan filter otomatis Fully Down (Site Down).",
+  "pub_date": "2026-10-31T01:42:00Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTdi9kM2hOci94cDR5RFI1YnIyMVl3UzlEeFNSL2ZPNE84YWJyL0FXMXUvTnY1YkNaZjBKd3RTY2QwS2dxUHBGbmJ3L01xZ3c5UU1mMUgxdzVPRFJiOHdibForZzVDQkFBPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg5MzUzNTA3CWZpbGU6Y2poZWxwZXItYXBwXzIuMC4yX3g2NC1zZXR1cC5leGUKZU01WkdaT09CN0JRRGpsOUtDdm9ZSWdrZ1NkNEJVRkxvTDB3cWZnZW8xSGNyWjZCNjRlYzQ5cDgvT0k4a0svNWhZYWRzcFZ2aHZKaUJESEZROXd5Q2c9PQo=",
-      "url": "https://github.com/youthloser666/cjhelper-tauri/releases/download/CJH/cjhelper-app_2.0.2_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTdi9kM2hOci94cCt5cjIxOGYvM2RLbHhkSWVZdklEWFB2NGNHaWFNV1pHdjVYNEcwUHY1RXBmR3JrWEVHelJSMjFraDNGNGdQdnAvWXJ1WWozVGd0Q1pTUmlaUE9GOUF3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMzg1NzYzCWZpbGU6Y2poZWxwZXItYXBwXzIuMC4zX3g2NC1zZXR1cC5leGUKK0dOTG5XQlpqeUdzbUNQck8zRHNabkZoRFowb045Y0xpcGJrbXNJaFNHVlhPZHBMMjFuamthSEZPV3d5bVMrdjFnTHZFSXhWbG9mZ2FrTHN2TUhWQmc9PQo=",
+      "url": "https://github.com/youthloser666/cjhelper-tauri/releases/download/CJH/cjhelper-app_2.0.3_x64-setup.exe"
     }
   }
 }
