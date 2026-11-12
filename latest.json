@@ -1,11 +1,11 @@
 {
-  "version": "2.0.3",
-  "notes": "Release v2.0.3: Format baru output Flash Report, integrasi database MPlane IP Address Nokia MRBTS (.xlsb), dan filter otomatis Fully Down (Site Down).",
-  "pub_date": "2026-10-31T01:42:00Z",
+  "version": "2.0.4",
+  "notes": "Release v2.0.4: Migrasi engine WhatsApp dari Baileys (Node.js) ke Whatsmeow (Go pure binary) untuk performa lebih stabil dan ringan, penghapusan total dependensi Baileys, serta pembaruan filter Flash Report Position PG (fokus tim OTW ETA, ONSITE TS, ONSITE BUG tanpa keyword priority).",
+  "pub_date": "2026-10-31T16:38:00Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTdi9kM2hOci94cCt5cjIxOGYvM2RLbHhkSWVZdklEWFB2NGNHaWFNV1pHdjVYNEcwUHY1RXBmR3JrWEVHelJSMjFraDNGNGdQdnAvWXJ1WWozVGd0Q1pTUmlaUE9GOUF3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMzg1NzYzCWZpbGU6Y2poZWxwZXItYXBwXzIuMC4zX3g2NC1zZXR1cC5leGUKK0dOTG5XQlpqeUdzbUNQck8zRHNabkZoRFowb045Y0xpcGJrbXNJaFNHVlhPZHBMMjFuamthSEZPV3d5bVMrdjFnTHZFSXhWbG9mZ2FrTHN2TUhWQmc9PQo=",
-      "url": "https://github.com/youthloser666/cjhelper-tauri/releases/download/CJH/cjhelper-app_2.0.3_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTdi9kM2hOci94cDR4bXZHMmdpMmpISW95blJZTDkzV2RsMWpNeWNLTUQrdmFONG8wc2l2UFcrbkg1aThCdHRxWnE5N0xOd3ZNbWc4MUVQb2QvWWtWandId1UzK2pDY0E4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzNDY0NzIwCWZpbGU6Y2poZWxwZXItYXBwXzIuMC40X3g2NC1zZXR1cC5leGUKOGUvT1ZJY2FwMWl4K3pyRXRmODI3eCtVZ0ExSWFsUnpQajcxam5rQlBNdks4dW9lQXNvTHppM09XM1JTM1QzN3FVZXIwNmUxTllnME1OTnJaZUZ0Q2c9PQo=",
+      "url": "https://github.com/youthloser666/cjhelper-tauri/releases/download/CJH/cjhelper-app_2.0.4_x64-setup.exe"
     }
   }
 }

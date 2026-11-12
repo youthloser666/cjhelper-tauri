@@ -1,0 +1,635 @@
+/* ══════════════════════════════════════════════════════════════
+   SEGMENTED CONTROLS (Linear 4-step surface pill toggles)
+   ══════════════════════════════════════════════════════════════ */
+.segmented-control {
+  display: inline-flex;
+  align-items: center;
+  background: var(--bg-card);
+  border-radius: var(--r-pill);
+  padding: 3px;
+  gap: 2px;
+  border: 1px solid var(--bdr);
+}
+
+.seg-btn, .mode-btn {
+  background: transparent;
+  border: none;
+  border-radius: var(--r-pill);
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--txt-3);
+  cursor: pointer;
+  transition: background-color 0.16s ease, color 0.16s ease;
+  font-family: var(--font-family);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.seg-btn:hover, .mode-btn:hover {
+  color: var(--txt-1);
+}
+
+.seg-btn.active, .mode-btn.active {
+  background: var(--bg-surface);
+  color: var(--txt-1);
+  font-weight: 600;
+}
+
+.seg-btn:focus-visible, .mode-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   BUTTONS (Linear #5e6ad2 Primary CTA & surface-1 8px Outlines)
+   ══════════════════════════════════════════════════════════════ */
+.tbtn-p, .btn-primary {
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  color: var(--accent-ink);
+  padding: 8px 14px;
+  border-radius: var(--r-md);
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 12.5px;
+  font-family: var(--font-family);
+  letter-spacing: -0.01em;
+  transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.tbtn-p:hover:not(:disabled), .btn-primary:hover:not(:disabled) {
+  background: var(--accent-lit);
+  border-color: var(--accent-lit);
+}
+
+.tbtn-p:active:not(:disabled), .btn-primary:active:not(:disabled) {
+  background: var(--accent-focus);
+  transform: scale(0.98);
+}
+
+.tbtn-p:focus-visible, .btn-primary:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.tbtn-p:disabled, .btn-primary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Secondary & Pill Buttons */
+.pill {
+  padding: 5px 12px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--bdr);
+  background: var(--bg-base);
+  color: var(--txt-3);
+  cursor: pointer;
+  font-size: 11.5px;
+  font-family: var(--font-family);
+  font-weight: 500;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.pill:hover {
+  background: var(--bg-surface);
+  color: var(--txt-1);
+}
+
+.pill.active {
+  background: var(--bg-surface);
+  border-color: rgba(94, 106, 210, 0.42);
+  color: var(--txt-1);
+  font-weight: 600;
+}
+
+body.light .pill.active {
+  color: var(--accent);
+}
+
+.pill:active {
+  transform: scale(0.98);
+}
+
+.pill:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* Load / Utility Buttons */
+.tbtn-load {
+  background: var(--bg-card);
+  border: 1px solid var(--bdr-2);
+  color: var(--txt-1);
+  padding: 6px 14px;
+  border-radius: var(--r-md);
+  cursor: pointer;
+  font-size: 12px;
+  font-family: var(--font-family);
+  font-weight: 500;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.tbtn-load:hover {
+  background: var(--bg-surface);
+  border-color: var(--accent);
+  color: var(--accent-lit);
+}
+
+body.light .tbtn-load:hover {
+  color: var(--accent);
+}
+
+.tbtn-load:focus-visible {
+  outline: none;
+  border-color: var(--accent-focus);
+  box-shadow: var(--focus-ring);
+}
+
+.tbtn-load:active {
+  transform: scale(0.98);
+}
+
+/* Clear / Outline Button */
+.tbtn-clr {
+  background: var(--bg-card);
+  border: 1px solid var(--bdr);
+  color: var(--txt-2);
+  padding: 6px 14px;
+  border-radius: var(--r-md);
+  cursor: pointer;
+  font-size: 12px;
+  font-family: var(--font-family);
+  font-weight: 500;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.tbtn-clr:hover {
+  color: var(--txt-1);
+  background: var(--bg-surface);
+  border-color: var(--bdr-2);
+}
+
+.tbtn-clr:focus-visible {
+  outline: none;
+  border-color: var(--accent-focus);
+  box-shadow: var(--focus-ring);
+}
+
+.tbtn-clr:active {
+  transform: scale(0.98);
+}
+
+/* Copy Action Buttons */
+.cbtn {
+  padding: 6px 14px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--bdr);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  background: var(--bg-card);
+  color: var(--txt-2);
+  font-family: var(--font-family);
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.cbtn:hover {
+  color: var(--txt-1);
+  background: var(--bg-surface);
+  border-color: var(--bdr-2);
+}
+
+.cbtn:focus-visible {
+  outline: none;
+  border-color: var(--accent-focus);
+  box-shadow: var(--focus-ring);
+}
+
+.cbtn:active {
+  transform: scale(0.98);
+}
+
+.cbtn.ca {
+  background: var(--accent-dim);
+  border-color: rgba(94, 106, 210, 0.42);
+  color: var(--accent-lit);
+}
+
+body.light .cbtn.ca {
+  color: var(--accent);
+}
+
+.cbtn.cd {
+  background: var(--red-d);
+  border-color: var(--red-bdr);
+  color: var(--red);
+}
+
+.cbtn.cu {
+  background: var(--grn-d);
+  border-color: var(--grn-bdr);
+  color: var(--grn);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   FORM INPUTS & TEXTAREAS (Linear 8px Inputs & #5e69d1 Focus Ring)
+   ══════════════════════════════════════════════════════════════ */
+.input, .fi, .sinput, select.fi {
+  background: var(--bg-input);
+  color: var(--txt-1);
+  border: 1px solid var(--bdr);
+  border-radius: var(--r-md);
+  padding: 8px 12px;
+  font-family: var(--font-family);
+  font-size: 12.5px;
+  outline: none;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.input:focus, .fi:focus, .sinput:focus, select.fi:focus {
+  border-color: var(--accent-focus);
+  box-shadow: var(--focus-ring);
+}
+
+.input:disabled, .fi:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  background: var(--bg-surface);
+}
+
+.input-pill {
+  background: var(--bg-input);
+  border: 1px solid var(--bdr);
+  color: var(--txt-1);
+  border-radius: var(--r-pill);
+  padding: 6px 12px;
+  font-size: 12px;
+  font-family: var(--font-family);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.input-pill:focus {
+  border-color: var(--accent-focus);
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.checkbox, .custom-radio {
+  accent-color: var(--accent);
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+  border-radius: var(--r-xs);
+}
+
+textarea {
+  background: var(--bg-input);
+  color: var(--txt-1);
+  border: 1px solid var(--bdr);
+  border-radius: var(--r-md);
+  font-family: var(--mono);
+}
+
+.data-ta, .input-area {
+  background: var(--bg-input);
+  border: 1px solid var(--bdr);
+  color: var(--txt-1);
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 12px 14px;
+  border-radius: var(--r-md);
+  outline: none;
+  line-height: 1.6;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.data-ta:focus, .input-area:focus {
+  border-color: var(--accent-focus);
+  box-shadow: var(--focus-ring);
+}
+
+/* ── Message Preview Box (.f-prev) ── */
+.f-prev {
+  display: block;
+  width: calc(100% - 24px);
+  margin: 10px 12px;
+  padding: 10px 14px;
+  background: var(--bg-input);
+  border: 1px solid var(--bdr);
+  border-radius: var(--r-md);
+  color: var(--txt-1);
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.6;
+  height: 68px;
+  min-height: 52px;
+  max-height: 180px;
+  resize: vertical;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.f-prev::placeholder {
+  color: var(--txt-3);
+  font-style: italic;
+}
+
+.f-prev:focus {
+  border-color: var(--accent-focus);
+  box-shadow: var(--focus-ring);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   TABLES (.dt, .table, .data-table)
+   ══════════════════════════════════════════════════════════════ */
+.dt, .table, .data-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.dt th, .table th, .data-table th {
+  padding: 8px 12px;
+  text-align: left;
+  font-size: 11px;
+  color: var(--txt-3);
+  font-weight: 500;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--bdr);
+  background: var(--bg-surface);
+  white-space: nowrap;
+  font-family: var(--font-family);
+}
+
+.dt td, .table td, .data-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--bdr);
+  font-size: 12.5px;
+  vertical-align: middle;
+  color: var(--txt-1);
+}
+
+.dt tr:nth-child(even) {
+  background: rgba(255, 255, 255, 0.015);
+}
+
+body.light .dt tr:nth-child(even) {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.dt tr:hover td, .table tr:hover td {
+  background: var(--bg-hover);
+}
+
+/* Row selection in Linear Lavender */
+.dt tbody tr.selected {
+  background: var(--accent-dim) !important;
+}
+
+.dt tbody tr.selected td {
+  border-bottom-color: rgba(94, 106, 210, 0.30) !important;
+}
+
+.dt tbody tr.selected.down {
+  background: var(--red-d) !important;
+}
+.dt tbody tr.selected.down td {
+  border-bottom-color: var(--red-bdr) !important;
+}
+
+.dt tbody tr.selected.up {
+  background: var(--grn-d) !important;
+}
+.dt tbody tr.selected.up td {
+  border-bottom-color: var(--grn-bdr) !important;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   BADGES & STATUS PILLS (9999px Pill Geometry)
+   ══════════════════════════════════════════════════════════════ */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  font-family: var(--font-family);
+  letter-spacing: 0;
+}
+
+.br {
+  background: var(--red-d);
+  color: var(--red);
+  border: 1px solid var(--red-bdr);
+}
+
+.ba {
+  background: var(--amb-d);
+  color: var(--amb);
+  border: 1px solid var(--amb-bdr);
+}
+
+.bb {
+  background: var(--accent-dim);
+  color: var(--accent-lit);
+  border: 1px solid rgba(94, 106, 210, 0.32);
+}
+
+body.light .bb {
+  color: var(--accent);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   STAT METRICS & INFO BLOCKS (12px Surface-1 Cards)
+   ══════════════════════════════════════════════════════════════ */
+.sc {
+  background: var(--bg-card);
+  border: 1px solid var(--bdr);
+  border-radius: var(--r-lg);
+  padding: 16px;
+  box-shadow: var(--surface-top-edge);
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.sc:hover {
+  border-color: var(--bdr-2);
+  background: var(--bg-surface);
+}
+
+.sc-num {
+  font-size: 28px;
+  font-weight: 600;
+  font-family: var(--font-display);
+  line-height: 1.15;
+  margin-bottom: 2px;
+  letter-spacing: -0.6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.sc.r .sc-num { color: var(--red); }
+.sc.g .sc-num { color: var(--grn); }
+.sc.b .sc-num { color: var(--blu); }
+.sc.a .sc-num { color: var(--amb); }
+
+.sc-label {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--txt-2);
+}
+
+.sc-sub {
+  font-size: 11px;
+  color: var(--txt-3);
+  margin-top: 3px;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   INFO BLOCKS (.ib) & HEADERS
+   ══════════════════════════════════════════════════════════════ */
+.ib {
+  background: var(--bg-card);
+  border: 1px solid var(--bdr);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  margin-bottom: 8px;
+  box-shadow: var(--surface-top-edge);
+}
+
+.ib:last-child {
+  margin-bottom: 0;
+}
+
+.ib-h {
+  padding: 10px 14px;
+  font-size: 12.5px;
+  font-weight: 500;
+  font-family: var(--font-display);
+  color: var(--txt-1);
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--bdr);
+  letter-spacing: -0.02em;
+}
+
+.ig {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.ir {
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--bdr);
+}
+
+.il {
+  font-size: 10.5px;
+  color: var(--txt-3);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin-bottom: 2px;
+  font-weight: 500;
+}
+
+.iv {
+  font-size: 12px;
+  color: var(--txt-1);
+  font-family: var(--mono);
+}
+
+.iv.em {
+  color: var(--txt-3);
+}
+
+/* Form fields layout */
+.ff {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--bdr);
+}
+
+.fl {
+  width: 120px;
+  font-size: 12px;
+  color: var(--txt-2);
+  flex-shrink: 0;
+  font-weight: 500;
+}
+
+.fh {
+  font-size: 11px;
+  color: var(--txt-3);
+  width: 145px;
+  flex-shrink: 0;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   SUB-TABS & TAB ROWS (9999px Pill Toggle Bar)
+   ══════════════════════════════════════════════════════════════ */
+.tab-row {
+  display: flex;
+  background: var(--bg-card);
+  border: 1px solid var(--bdr);
+  border-radius: var(--r-pill);
+  padding: 3px;
+  gap: 4px;
+  margin-bottom: 8px;
+  flex-shrink: 0;
+}
+
+.tb {
+  flex: 1;
+  padding: 6px 14px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-pill);
+  color: var(--txt-3);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: background-color 0.16s ease, color 0.16s ease, border-color 0.16s ease;
+  font-family: var(--font-family);
+  letter-spacing: -0.01em;
+}
+
+.tb:hover:not(.active) {
+  color: var(--txt-1);
+}
+
+.tb.active {
+  color: var(--txt-1);
+  background: var(--bg-surface);
+  border-color: rgba(94, 106, 210, 0.35);
+  font-weight: 600;
+}
+
+body.light .tb.active {
+  color: var(--accent);
+}
+
+.tb:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.msg-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--bdr);
+  border-radius: var(--r-lg);
+  box-shadow: var(--surface-top-edge);
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  margin-bottom: 8px;
+}

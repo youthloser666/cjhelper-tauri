@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "cjhelper-app",
-  "version": "2.0.3",
+  "version": "2.0.4",
   "identifier": "com.aldo.cjhelper-app",
   "build": {
     "frontendDist": "../src"
@@ -11,8 +11,12 @@
     "windows": [
       {
         "title": "cjhelper-app",
-        "width": 800,
-        "height": 600
+        "width": 1280,
+        "height": 820,
+        "minWidth": 800,
+        "minHeight": 600,
+        "resizable": true,
+        "decorations": false
       }
     ],
     "security": {
@@ -39,9 +43,7 @@
       "icons/icon.ico"
     ],
     "resources": [
-      "../../wa_server/package.json",
-      "../../wa_server/server.js",
-      "../../wa_server/node_modules/**/*"
+      "../wa_server_go/wa_server.exe"
     ]
   }
 }

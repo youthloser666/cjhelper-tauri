@@ -13,6 +13,7 @@ src-tauri/target/
 src-tauri/gen/schemas/
 *.msi
 *.exe
+!wa_server_go/wa_server.exe
 *.zip
 *.sig
 
@@ -62,3 +63,10 @@ lerna-debug.log*
 Thumbs.db
 desktop.ini
 new.txt
+promt.txt
+.agents
+.specify
+specs
+DESIGN.md
+cjhelper_new.key.pub
+.env*

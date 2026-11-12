@@ -494,108 +494,139 @@ pub fn wa_start_server(app: tauri::AppHandle) -> Result<(), String> {
     use tauri::Manager;
     use tauri::path::BaseDirectory;
 
-    // 1. Coba cari lokasi wa_server secara dinamis
-    let mut wa_dir = std::path::PathBuf::new();
-    let mut found = false;
+    // 1. Cari binary Whatsmeow Go wa_server.exe terlebih dahulu
+    let mut exe_path: Option<std::path::PathBuf> = None;
 
-    // A. Coba cari di folder resource Tauri (jika dibundle)
-    if let Ok(resource_path) = app.path().resolve("wa_server", BaseDirectory::Resource) {
-        if resource_path.exists() && resource_path.is_dir() {
-            wa_dir = resource_path;
-            found = true;
+    // A. Cek di resource directory Tauri
+    if let Ok(res_path) = app.path().resolve("wa_server.exe", BaseDirectory::Resource) {
+        if res_path.exists() {
+            exe_path = Some(res_path);
         }
     }
-    if !found {
-        if let Ok(resource_path) = app.path().resolve("_up_/_up_/wa_server", BaseDirectory::Resource) {
-            if resource_path.exists() && resource_path.is_dir() {
-                wa_dir = resource_path;
-                found = true;
+    if exe_path.is_none() {
+        if let Ok(res_path) = app.path().resolve("wa_server_go/wa_server.exe", BaseDirectory::Resource) {
+            if res_path.exists() {
+                exe_path = Some(res_path);
             }
         }
     }
 
-    // B. Coba cari sibling dari executable (portable run)
-    if !found {
-        if let Ok(mut exe_path) = std::env::current_exe() {
-            exe_path.pop(); // ke folder exe
-            let sibling_path = exe_path.join("wa_server");
-            if sibling_path.exists() && sibling_path.is_dir() {
-                wa_dir = sibling_path;
-                found = true;
-            } else {
-                // C. Coba cari relative path saat tauri dev (../../../wa_server)
-                let dev_path = exe_path.join("../../..").join("wa_server");
-                if dev_path.exists() && dev_path.is_dir() {
-                    wa_dir = dev_path;
-                    found = true;
-                }
+    // B. Cek sibling dari executable aplikasi saat berjalan
+    if exe_path.is_none() {
+        if let Ok(mut current_exe) = std::env::current_exe() {
+            current_exe.pop(); // Folder tempat cjhelper-app.exe berada
+            let p1 = current_exe.join("wa_server.exe");
+            let p2 = current_exe.join("wa_server_go").join("wa_server.exe");
+            let p3 = current_exe.join("../../..").join("wa_server_go").join("wa_server.exe");
+
+            if p1.exists() {
+                exe_path = Some(p1);
+            } else if p2.exists() {
+                exe_path = Some(p2);
+            } else if p3.exists() {
+                exe_path = Some(p3);
             }
         }
     }
 
-    // D. Fallback ke path default pengembang jika tidak ditemukan
-    if !found {
+    // C. Fallback dev workspace path
+    if exe_path.is_none() {
+        let dev_path = std::path::PathBuf::from("d:\\WEB\\PROJECT V2\\cjhelper-app\\wa_server_go\\wa_server.exe");
+        if dev_path.exists() {
+            exe_path = Some(dev_path);
+        }
+    }
+
+    // Tentukan path penyimpanan SQLite session di app_config_dir agar aman dari izin write Program Files
+    let mut db_arg = String::new();
+    if let Ok(config_dir) = app.path().app_config_dir() {
+        let _ = std::fs::create_dir_all(&config_dir);
+        let session_file = config_dir.join("wa_session.db");
+        db_arg = format!("--db={}", session_file.to_string_lossy());
+    }
+
+    // JIKA wa_server.exe ditemukan -> Jalankan Whatsmeow Go Server!
+    if let Some(target_exe) = exe_path {
+        let working_dir = target_exe.parent().unwrap_or_else(|| std::path::Path::new("."));
+
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+            let mut cmd = Command::new(&target_exe);
+            if !db_arg.is_empty() {
+                cmd.arg(&db_arg);
+            }
+            cmd.current_dir(working_dir)
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .creation_flags(CREATE_NO_WINDOW)
+                .spawn()
+                .map_err(|e| format!("Gagal menjalankan Whatsmeow WA Server (Go): {}", e))?;
+        }
+
+        #[cfg(not(target_os = "windows"))]
+        {
+            let mut cmd = Command::new(&target_exe);
+            if !db_arg.is_empty() {
+                cmd.arg(&db_arg);
+            }
+            cmd.current_dir(working_dir)
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .map_err(|e| format!("Gagal menjalankan Whatsmeow WA Server (Go): {}", e))?;
+        }
+
+        return Ok(());
+    }
+
+    // JIKA wa_server.exe tidak ditemukan -> Fallback coba jalankan server.js (Node.js Baileys) jika masih ada
+    let mut wa_node_dir = std::path::PathBuf::new();
+    let mut found_node = false;
+
+    if let Ok(mut exe_path) = std::env::current_exe() {
+        exe_path.pop();
+        let sibling_node = exe_path.join("wa_server");
+        if sibling_node.exists() && sibling_node.is_dir() {
+            wa_node_dir = sibling_node;
+            found_node = true;
+        } else {
+            let dev_node = exe_path.join("../../..").join("wa_server");
+            if dev_node.exists() && dev_node.is_dir() {
+                wa_node_dir = dev_node;
+                found_node = true;
+            }
+        }
+    }
+
+    if !found_node {
         let fallback = std::path::PathBuf::from("d:\\WEB\\PROJECT V2\\wa_server");
         if fallback.exists() {
-            wa_dir = fallback;
-            found = true;
+            wa_node_dir = fallback;
+            found_node = true;
         }
     }
 
-    if !found {
-        return Err("Folder 'wa_server' tidak ditemukan. Harap pastikan folder 'wa_server' berada di direktori aplikasi atau sibling executable.".to_string());
+    if found_node && wa_node_dir.join("server.js").exists() {
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
+            Command::new("cmd")
+                .args(&["/C", "node server.js"])
+                .current_dir(&wa_node_dir)
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .creation_flags(CREATE_NO_WINDOW)
+                .spawn()
+                .map_err(|e| format!("Gagal menjalankan Node WA server: {}", e))?;
+        }
+        return Ok(());
     }
 
-    // 2. Cek apakah file server.js ada di folder wa_server tersebut
-    if !wa_dir.join("server.js").exists() {
-        return Err(format!(
-            "File 'server.js' tidak ditemukan di folder: {:?}",
-            wa_dir
-        ));
-    }
-
-    // 3. Jalankan server node
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x08000000;
-
-        // Jalankan perintah node, tangkap jika gagal karena node tidak terinstal
-        // creation_flags(CREATE_NO_WINDOW) mencegah terminal cmd muncul
-        Command::new("cmd")
-            .args(&["/C", "node server.js"])
-            .current_dir(&wa_dir)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .creation_flags(CREATE_NO_WINDOW)
-            .spawn()
-            .map_err(|e| {
-                if e.kind() == std::io::ErrorKind::NotFound {
-                    "Node.js tidak ditemukan di sistem. Harap instal Node.js terlebih dahulu agar fitur WhatsApp dapat berjalan.".to_string()
-                } else {
-                    format!("Gagal menjalankan WA server: {}", e)
-                }
-            })?;
-    }
-    
-    #[cfg(not(target_os = "windows"))]
-    {
-        Command::new("node")
-            .arg("server.js")
-            .current_dir(&wa_dir)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .map_err(|e| {
-                if e.kind() == std::io::ErrorKind::NotFound {
-                    "Node.js tidak ditemukan di sistem. Harap instal Node.js terlebih dahulu agar fitur WhatsApp dapat berjalan.".to_string()
-                } else {
-                    format!("Gagal menjalankan WA server: {}", e)
-                }
-            })?;
-    }
-    
-    Ok(())
+    Err("File 'wa_server.exe' (Whatsmeow Go) tidak ditemukan. Harap pastikan binary Whatsmeow telah di-compile di folder wa_server_go.".to_string())
 }
 
 #[tauri::command]

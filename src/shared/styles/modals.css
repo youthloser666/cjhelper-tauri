@@ -1,0 +1,43 @@
+/* ══════════════════════════════════════════════════════════════
+   MODALS (Linear Elevated Hairline Dialogs & Scrim)
+   ══════════════════════════════════════════════════════════════ */
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: var(--overlay-scrim);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  z-index: 9999;
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal > div:not(.modal-backdrop) {
+  border-radius: var(--r-lg) !important;
+  border: 1px solid var(--bdr) !important;
+  box-shadow: var(--surface-top-edge), var(--shadow-lg) !important;
+  background: var(--bg-elevated) !important;
+}
+
+/* Street View Product Panel Card (16px rounded.xl) */
+#modal-street-view .street-view-card {
+  background: var(--bg-card) !important;
+  border: 1px solid var(--bdr) !important;
+  border-radius: var(--r-xl) !important;
+  width: 960px;
+  max-width: 96vw;
+  height: 85vh;
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--surface-top-edge), var(--shadow-lg) !important;
+  overflow: hidden;
+}
+
+.modal.open {
+  display: flex;
+}

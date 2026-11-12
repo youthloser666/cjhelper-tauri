@@ -1,0 +1,72 @@
+/* ── Base Reset & Linear Aptos Typography ── */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: var(--font-family);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.5;
+  background-color: var(--bg-base);
+  color: var(--txt-1);
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  transition: background-color 0.2s ease, color 0.2s ease;
+  letter-spacing: -0.05px;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.4px;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  background: var(--bg-base);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   SCROLLBARS (Linear Dark Default + Inverse Light)
+   ══════════════════════════════════════════════════════════════ */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: var(--r-pill);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
+
+body.light ::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.16);
+}
+
+body.light ::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.30);
+}
+
+.is-hidden {
+  display: none !important;
+}
