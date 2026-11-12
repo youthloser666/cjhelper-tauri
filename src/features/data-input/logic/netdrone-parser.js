@@ -164,7 +164,18 @@ export async function parseAndEnrichNetdroneData(
           dbRow['CATEGORY'] ||
           getColumnValue(columns, ['category']) ||
           '',
-        siteClass: dbRow['Site Class'] || dbRow['Tier'] || getColumnValue(columns, ['site_class']) || '',
+        traffic:
+          dbRow['Traffic'] ||
+          dbRow['Site Priority Label'] ||
+          dbRow['Site Class'] ||
+          dbRow['Tier'] ||
+          getColumnValue(columns, ['traffic', 'site_class']) ||
+          '',
+        siteClass:
+          dbRow['Site Class'] ||
+          dbRow['Tier'] ||
+          getColumnValue(columns, ['site_class']) ||
+          '',
         skipped: false,
         matchedDb: true,
         statusMessage: '✅ Netdrone (Matched DB)',
@@ -182,6 +193,7 @@ export async function parseAndEnrichNetdroneData(
         rts: getColumnValue(columns, ['rts_name']) || '',
         tePhone: getColumnValue(columns, ['fme_phone']) || '',
         category: getColumnValue(columns, ['category']) || '',
+        traffic: getColumnValue(columns, ['traffic', 'site_class']) || '',
         siteClass: getColumnValue(columns, ['site_class']) || '',
         skipped: false,
         matchedDb: false,

@@ -25,6 +25,12 @@ export function renderMessagesTemplate() {
           <input class="fi" id="pm-f-cl" placeholder="Cluster..." />
           <input class="fi" id="pm-f-ns" placeholder="New Site..." />
           <input class="fi" id="pm-f-rem" placeholder="Remark..." />
+          <div class="pm-smart-filter" id="pm-smart-filter" role="group" aria-label="Smart remark filter">
+            <button type="button" class="smart-pill active" data-clarity="all" aria-pressed="true">All</button>
+            <button type="button" class="smart-pill" data-clarity="unclear" aria-pressed="false">Needs Follow-Up</button>
+            <button type="button" class="smart-pill" data-clarity="empty" aria-pressed="false">No Remark</button>
+            <button type="button" class="smart-pill" data-clarity="clear" aria-pressed="false">Actionable</button>
+          </div>
           <button class="tbtn-clr" id="btn-pm-reset">Reset Filter</button>
         </div>
         <textarea id="pm-preview-text" class="f-prev" readonly placeholder="Message preview..."></textarea>

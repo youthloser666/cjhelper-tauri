@@ -80,30 +80,32 @@ export function buildFormatterPreview(formatConfig, target = 'msg') {
   const sampleSites = [
     {
       impact: 'Fully Down',
-      category: 'STANDARD',
-      site_class: 'REGULAR',
-      start_time: '08:15',
+      category: 'SMALL HUB SITE',
+      traffic: 'HIGH',
+      site_class: 'A',
+      start_time: '2026-11-07 15:08:49',
       start_timestamp: 0,
       cluster: 'Semarang',
       site_name: 'Tugu Muda',
       old_site: 'SMG001',
       new_site: '14SMG0001',
       remark: 'PLN Off',
-      rts: 'RTS_SMG',
+      rts: 'Jujuk Ahmad Afif',
       pic: 'Budi',
     },
     {
       impact: 'Partial Cell',
-      category: 'STANDARD',
-      site_class: 'REGULAR',
-      start_time: '08:30',
+      category: 'END SITE',
+      traffic: 'VERY HIGH',
+      site_class: 'B',
+      start_time: '2026-11-07 15:30:00',
       start_timestamp: 0,
       cluster: 'Semarang',
       site_name: 'Simpang Lima',
       old_site: 'SMG002',
       new_site: '14SMG0002',
       remark: 'BCCH missing fault',
-      rts: 'RTS_SMG',
+      rts: 'Jujuk Ahmad Afif',
       pic: 'Budi',
     },
   ];
@@ -111,17 +113,18 @@ export function buildFormatterPreview(formatConfig, target = 'msg') {
   const headerLine = config.msg_hdr
     .replace(/\{cluster\}/g, 'Semarang')
     .replace(/\{pic\}/g, 'Budi')
-    .replace(/\{rts\}/g, 'RTS_SMG')
+    .replace(/\{rts\}/g, 'Jujuk Ahmad Afif')
     .replace(/\{region\}/g, 'CJN')
-    .replace(/\{date\}/g, '12/11/2026')
-    .replace(/\{jam\}/g, '09:00')
+    .replace(/\{date\}/g, '12-Nov-2026')
+    .replace(/\{jam\}/g, '10:00')
     .replace(/\{total_sd\}/g, '1');
 
   const lines = [headerLine];
   const sep = config.spacing ? '\n\n' : '\n';
+  const formatOpts = target === 'bc' ? { timeFormat: 'iso' } : undefined;
 
-  const fullFormatted = formatSingleLine(sampleSites[0], config, true);
-  const bcchFormatted = formatSingleLine(sampleSites[1], config, true);
+  const fullFormatted = formatSingleLine(sampleSites[0], config, true, formatOpts);
+  const bcchFormatted = formatSingleLine(sampleSites[1], config, true, formatOpts);
 
   if (config.lbl_sd) {
     lines.push(`${config.lbl_sd}\n${fullFormatted.waLine}`);

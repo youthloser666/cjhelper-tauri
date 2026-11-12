@@ -2,6 +2,35 @@ import { STORAGE_KEYS } from '../../../shared/state/storage-keys.js';
 
 const SITE_ID_PATTERN = /([0-9]{2}[A-Z]{3}[0-9]{4})/i;
 
+const PRIORITY_ONLY_TOKENS = new Set([
+  'A',
+  'B',
+  'C',
+  'HIGH',
+  'VERY HIGH',
+  'LOW',
+  'STANDARD',
+  'REGULAR',
+  'CRITICAL',
+]);
+
+function isPriorityOnlyValue(value) {
+  const normalized = String(value ?? '').trim().toUpperCase();
+  if (!normalized || normalized.length <= 2) return true;
+  if (PRIORITY_ONLY_TOKENS.has(normalized)) return true;
+  return normalized.includes('CRITICAL') && !normalized.includes('HUB') && !normalized.includes('END SITE');
+}
+
+function pickFirstNonEmpty(candidates, predicate = (val) => Boolean(val)) {
+  for (const candidate of candidates) {
+    const trimmed = String(candidate ?? '').trim();
+    if (trimmed && predicate(trimmed)) {
+      return trimmed;
+    }
+  }
+  return '';
+}
+
 /**
  * Parses pasted Excel Pivot TSV text into normalized pivot rows without DOM side effects.
  */
@@ -22,6 +51,8 @@ export function parsePivotData(rawText) {
     ring: 7,
     category: 8,
     newTe: 9,
+    link: undefined,
+    remark: undefined,
   };
 
   let headerFound = false;
@@ -39,15 +70,17 @@ export function parsePivotData(rawText) {
         else if (headerLower.includes('monitoring')) columnIndices.monitoring = colIndex;
         else if (headerLower.includes('system')) columnIndices.system = colIndex;
         else if (headerLower.includes('cluster')) columnIndices.cluster = colIndex;
-        else if (headerLower.includes('new id') || headerLower.includes('new site id') || headerLower.includes('id')) {
+        else if (headerLower.includes('new id') || headerLower.includes('new site id') || headerLower === 'id') {
           columnIndices.newId = colIndex;
         } else if (headerLower.includes('site name') || headerLower.includes('name')) {
           columnIndices.siteName = colIndex;
         } else if (headerLower.includes('tanggal') || headerLower.includes('date') || headerLower.includes('start')) {
           columnIndices.tanggal = colIndex;
         } else if (headerLower.includes('ring')) columnIndices.ring = colIndex;
+        else if (headerLower.includes('link')) columnIndices.link = colIndex;
+        else if (headerLower.includes('remark') || headerLower === 'rem') columnIndices.remark = colIndex;
         else if (headerLower.includes('category') || headerLower.includes('categ')) columnIndices.category = colIndex;
-        else if (headerLower.includes('new te') || headerLower.includes('te name') || headerLower.includes('te')) {
+        else if (headerLower.includes('new te') || headerLower.includes('te name') || headerLower === 'te') {
           columnIndices.newTe = colIndex;
         }
       });
@@ -90,6 +123,10 @@ export function parsePivotData(rawText) {
       cleanedSiteName = cleanedSiteName.substring(newId.length + 1);
     }
 
+    const ringValue = parts[columnIndices.ring] || '';
+    const linkValue = columnIndices.link !== undefined ? parts[columnIndices.link] || '' : '';
+    const remarkValue = columnIndices.remark !== undefined ? parts[columnIndices.remark] || '' : '';
+
     rows.push({
       monitoring: monitoring.toUpperCase(),
       system: currentSystem || systemValue.toUpperCase() || 'HUAWEI',
@@ -97,6 +134,9 @@ export function parsePivotData(rawText) {
       newId,
       siteName: cleanedSiteName || siteName || newId,
       tanggal: parts[columnIndices.tanggal] || '',
+      ring: ringValue || linkValue,
+      ...(linkValue ? { link: linkValue } : {}),
+      remark: remarkValue,
       category: parts[columnIndices.category] || '',
       newTe: parts[columnIndices.newTe] || '',
     });
@@ -170,42 +210,31 @@ export async function enrichPivotRows(rawRows, { lookupSite = null, statusData =
       );
     }
 
-    let siteClass =
-      (matchedMaster &&
-        matchedMaster.site_class &&
-        !matchedMaster.site_class.toUpperCase().includes('CRITICAL')
-        ? matchedMaster.site_class
-        : '') ||
-      (dbInfo && dbInfo['Hub Type']) ||
-      (dbInfo && dbInfo['Site Class'] && !dbInfo['Site Class'].toUpperCase().includes('CRITICAL')
-        ? dbInfo['Site Class']
-        : '') ||
-      '';
+    const hubType =
+      pickFirstNonEmpty(
+        [
+          dbInfo && dbInfo['Hub Type'],
+          matchedMaster && matchedMaster.hub_type,
+          matchedMaster && matchedMaster.category,
+          row.hubType,
+          row.siteClass,
+        ],
+        (val) => !isPriorityOnlyValue(val)
+      ) || 'END SITE';
 
-    if (
-      !siteClass ||
-      siteClass === 'A' ||
-      siteClass === 'B' ||
-      siteClass === 'C' ||
-      siteClass.length <= 2 ||
-      siteClass.toUpperCase().includes('CRITICAL')
-    ) {
-      if (
-        matchedMaster &&
-        matchedMaster.site_class &&
-        !matchedMaster.site_class.toUpperCase().includes('CRITICAL')
-      ) {
-        siteClass = matchedMaster.site_class;
-      } else if (
-        matchedMaster &&
-        matchedMaster.category &&
-        !matchedMaster.category.toUpperCase().includes('CRITICAL')
-      ) {
-        siteClass = matchedMaster.category;
-      } else {
-        siteClass = 'END SITE';
-      }
-    }
+    const trafficTier =
+      pickFirstNonEmpty([
+        matchedMaster && matchedMaster.traffic,
+        dbInfo && dbInfo['Traffic'],
+        dbInfo && dbInfo['Site Priority Label'],
+        dbInfo && dbInfo['Site Class'],
+        dbInfo && dbInfo['Tier'],
+        dbInfo && dbInfo['Priority'],
+        matchedMaster && matchedMaster.priority,
+        matchedMaster && matchedMaster.site_class,
+        row.traffic,
+        row.priorityLabel,
+      ]) || '-';
 
     let resolvedSiteName = row.siteName;
     if (dbInfo && dbInfo['Site Name']) {
@@ -220,7 +249,10 @@ export async function enrichPivotRows(rawRows, { lookupSite = null, statusData =
       teName,
       fmOffice,
       cluster: fmOffice,
-      siteClass,
+      hubType,
+      traffic: trafficTier,
+      priorityLabel: trafficTier,
+      siteClass: hubType,
       siteName: resolvedSiteName,
     });
   }

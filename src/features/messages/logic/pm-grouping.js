@@ -1,5 +1,6 @@
 import { detectRegion } from '../../../shared/utils/region-detector.js';
 import { formatSingleLine } from './line-formatter.js';
+import { classifyRemarkClarity, matchesRemarkClarityFilter } from './remark-clarity.js';
 
 function isUntitledPic(rawPic) {
   const normalized = (rawPic || '').trim().toLowerCase();
@@ -32,6 +33,7 @@ export function buildPmGroups({
   const clusterFilter = (filters.cluster || '').toLowerCase();
   const newSiteFilter = (filters.newSite || '').toLowerCase();
   const remarkFilter = (filters.remark || '').toLowerCase();
+  const clarityFilter = (filters.clarity || 'all').toLowerCase();
 
   const downSites = (statusData || []).filter((site) => site.status === 'DOWN');
 
@@ -52,6 +54,7 @@ export function buildPmGroups({
           agging: '',
           remark: netdroneRow.remark || '',
           category: netdroneRow.category || '',
+          traffic: netdroneRow.traffic || netdroneRow.siteClass || '',
           site_class: netdroneRow.siteClass || '',
           vendor: netdroneRow.vendor || '',
           te_phone: netdroneRow.tePhone || '',
@@ -84,7 +87,11 @@ export function buildPmGroups({
 
       if (site.cluster) rawGroupsMap[resolvedPic].clusters.add(site.cluster);
       const formatted = formatSingleLine(site, fmtMsg, showRemark);
-      rawGroupsMap[resolvedPic].entries.push({ ...site, ...formatted });
+      rawGroupsMap[resolvedPic].entries.push({
+        ...site,
+        ...formatted,
+        remarkClarity: classifyRemarkClarity(site.remark),
+      });
 
       if (!rawGroupsMap[resolvedPic].rts && site.rts) {
         rawGroupsMap[resolvedPic].rts = site.rts;
@@ -122,7 +129,11 @@ export function buildPmGroups({
 
       if (site.cluster) rawGroupsMap[resolvedRts].clusters.add(site.cluster);
       const formatted = formatSingleLine(site, fmtMsg, showRemark);
-      rawGroupsMap[resolvedRts].entries.push({ ...site, ...formatted });
+      rawGroupsMap[resolvedRts].entries.push({
+        ...site,
+        ...formatted,
+        remarkClarity: classifyRemarkClarity(site.remark),
+      });
     });
 
     for (const groupKey of Object.keys(rawGroupsMap)) {
@@ -138,12 +149,15 @@ export function buildPmGroups({
     if (clusterFilter && !rawGroup.cluster.toLowerCase().includes(clusterFilter)) continue;
 
     let entries = rawGroup.entries;
-    if (newSiteFilter || remarkFilter) {
+    if (newSiteFilter || remarkFilter || (clarityFilter && clarityFilter !== 'all')) {
       entries = entries.filter((entry) => {
         if (newSiteFilter && !(entry.new_site || '').toLowerCase().includes(newSiteFilter)) {
           return false;
         }
         if (remarkFilter && !(entry.remark || '').toLowerCase().includes(remarkFilter)) {
+          return false;
+        }
+        if (!matchesRemarkClarityFilter(entry.remark, clarityFilter)) {
           return false;
         }
         return true;

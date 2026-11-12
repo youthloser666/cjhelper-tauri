@@ -1,7 +1,4 @@
-const MONTH_SHORT_NAMES = [
-  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-];
+import { formatShortMonthDate } from '../../../shared/utils/date-time.js';
 
 function formatPositionPgLine(entry) {
   const clusterValue = (entry.fmOffice || entry.cluster || entry.mcCluster || '-').trim();
@@ -70,10 +67,7 @@ export function buildFlashReportText({
     ? `Team Move : ${resolvedTeamMove} | PG Completed : ${resolvedPgCompleted} | PG Installed : ${resolvedPgInstalled} | PG Movement : ${resolvedPgMovement}`
     : `PG Completed : ${resolvedPgCompleted} | PG Installed : ${resolvedPgInstalled} | PG Movement : ${resolvedPgMovement}`;
 
-  const day = String(referenceDate.getDate()).padStart(2, '0');
-  const month = MONTH_SHORT_NAMES[referenceDate.getMonth()];
-  const year = referenceDate.getFullYear();
-  const formattedDate = `${day}-${month}-${year}`;
+  const formattedDate = formatShortMonthDate(referenceDate);
 
   const resolved2g = count2g ?? filteredRows.length;
   const resolved4g = count4g ?? filteredRows.length;

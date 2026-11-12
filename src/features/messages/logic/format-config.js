@@ -2,10 +2,10 @@ import { STORAGE_KEYS } from '../../../shared/state/storage-keys.js';
 
 export const DEFAULT_MSG_FORMAT = Object.freeze({
   msg_line: '{icon} {type} / {cluster} | {sitename} | {old} | {new} | {category} | {time}',
-  msg_remark: '    ↳ {remark}',
+  msg_remark: ' | {remark}',
   msg_hdr: '{cluster}  |  RTS: {rts}',
   lbl_sd: 'SITE DOWN :',
-  lbl_cd: 'CELLS DOWN :',
+  lbl_cd: 'CELL DOWN :',
   lbl_bcch: 'CELL DOWN BCCH Missing NOKIA :',
   key_bcch: 'BCCH',
   icon_down: '▶️',
@@ -13,11 +13,11 @@ export const DEFAULT_MSG_FORMAT = Object.freeze({
 });
 
 export const DEFAULT_BC_FORMAT = Object.freeze({
-  msg_line: '{icon} {rts} / {cluster} /  {new}  / {sitename} / {category} / {time}',
-  msg_remark: ' / {remark}',
-  msg_hdr: '*SITE FULLY DOWN {region}  {date} {jam}*\n*TOTAL SITEDOWN : {total_sd}*',
+  msg_line: '{icon} {rts} / {cluster} / {new} / {sitename} / {hub_type} / {traffic} / {time}',
+  msg_remark: ' | {remark}',
+  msg_hdr: '*SITE DOWN VS POWER {region} {date} {jam}*\n*TOTAL SITEDOWN : {total_sd}*',
   lbl_sd: 'SITE DOWN :',
-  lbl_cd: 'CELLS DOWN :',
+  lbl_cd: 'CELL DOWN :',
   lbl_bcch: 'CELL DOWN BCCH Missing NOKIA :',
   key_bcch: 'BCCH',
   icon_down: '▶️',
@@ -46,9 +46,29 @@ const LEGACY_BC_MAP = [
   ['keyBcch', 'key_bcch'],
 ];
 
+const UNTOUCHED_LEGACY_DEFAULTS = Object.freeze({
+  msg: Object.freeze({
+    msg_remark: Object.freeze(['    ↳ {remark}', '↳ {remark}']),
+  }),
+  bc: Object.freeze({
+    msg_line: Object.freeze([
+      '{icon} {rts} / {cluster} /  {new}  / {sitename} / {category} / {time}',
+      '{icon} {rts} / {cluster} / {new} / {sitename} / {category} / {time}',
+      '{icon} {owner} / {cluster} / {new} / {sitename} / {hub_type} / {priority} / {time}',
+    ]),
+    msg_remark: Object.freeze([' / {remark}']),
+    msg_hdr: Object.freeze([
+      '*SITE FULLY DOWN {region}  {date} {jam}*\n*TOTAL SITEDOWN : {total_sd}*',
+      '*SITE FULLY DOWN {region} {date} {jam}*\n*TOTAL SITEDOWN : {total_sd}*',
+    ]),
+    lbl_cd: Object.freeze(['CELLS DOWN :']),
+  }),
+});
+
 /**
  * Normalizes a persisted formatting config object, migrating legacy camelCase
  * keys onto the canonical snake_case schema without mutating the input.
+ * Untouched v2.0.4 legacy defaults automatically upgrade to the current format.
  */
 export function normalizeLegacyFormatConfig(parsedConfig, mode = 'msg') {
   const defaults = mode === 'bc' ? DEFAULT_BC_FORMAT : DEFAULT_MSG_FORMAT;
@@ -62,6 +82,13 @@ export function normalizeLegacyFormatConfig(parsedConfig, mode = 'msg') {
   for (const [legacyKey, canonicalKey] of fieldPairs) {
     if (migrated[legacyKey] && !migrated[canonicalKey]) {
       migrated[canonicalKey] = migrated[legacyKey];
+    }
+  }
+
+  const legacyDefaults = UNTOUCHED_LEGACY_DEFAULTS[mode === 'bc' ? 'bc' : 'msg'];
+  for (const [fieldKey, legacyValues] of Object.entries(legacyDefaults)) {
+    if (typeof migrated[fieldKey] === 'string' && legacyValues.includes(migrated[fieldKey])) {
+      migrated[fieldKey] = defaults[fieldKey];
     }
   }
 

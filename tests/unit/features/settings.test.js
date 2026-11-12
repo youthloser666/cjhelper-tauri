@@ -70,7 +70,10 @@ test('T030 formatter settings serialization, save, preview, and reset preserve c
   assert.match(previewMsg, /\*BCCH:\*/);
 
   const previewBc = buildFormatterPreview(DEFAULT_BC_FORMAT, 'bc');
-  assert.match(previewBc, /SITE FULLY DOWN/);
+  assert.match(previewBc, /SITE DOWN VS POWER/);
+  assert.match(previewBc, /Jujuk Ahmad Afif/);
+  assert.match(previewBc, /\/ HIGH \//);
+  assert.doesNotMatch(previewBc, /Budi/);
 
   const resetMsg = resetFormatterTarget(storage, 'msg');
   assert.deepEqual(resetMsg, getDefaultFormatForTarget('msg'));

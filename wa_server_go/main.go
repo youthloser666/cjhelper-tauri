@@ -11,7 +11,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"sync"
 	"syscall"
@@ -56,6 +55,7 @@ type WAServer struct {
 	groupsCache     []GroupItem
 	groupsCacheTime time.Time
 	isLoggingOut    bool
+	retryCache      *SentMessageCache
 }
 
 type GroupItem struct {
@@ -100,10 +100,11 @@ type BroadcastResponse struct {
 
 func NewWAServer(port int, dbPath string) *WAServer {
 	return &WAServer{
-		port:   port,
-		dbPath: dbPath,
-		state:  StateDisconnected,
-		logs:   make([]string, 0, 100),
+		port:       port,
+		dbPath:     dbPath,
+		state:      StateDisconnected,
+		logs:       make([]string, 0, 100),
+		retryCache: NewSentMessageCache(2000, 24*time.Hour),
 	}
 }
 
@@ -151,6 +152,25 @@ func (s *WAServer) initClient(ctx context.Context) error {
 	}
 
 	client := whatsmeow.NewClient(device, logger)
+	client.UseRetryMessageStore = true
+	client.AutoTrustIdentity = true
+	client.EnableAutoReconnect = true
+	client.InitialAutoReconnect = true
+	client.AutomaticMessageRerequestFromPhone = true
+	client.GetMessageForRetry = func(requester, to types.JID, id types.MessageID) *waE2E.Message {
+		if s.retryCache == nil {
+			return nil
+		}
+		recovered := s.retryCache.Lookup(requester, to, id, func(jid types.JID) []types.JID {
+			ctxLookup, cancelLookup := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancelLookup()
+			return resolveAliasJIDs(ctxLookup, client, jid)
+		})
+		if recovered != nil {
+			s.addLog(fmt.Sprintf("Melayani retry enkripsi E2EE pesan %s untuk device %s", id, requester.String()))
+		}
+		return recovered
+	}
 	client.AddEventHandler(s.handleEvent)
 
 	s.container = container
@@ -191,18 +211,35 @@ func (s *WAServer) startConnection(ctx context.Context) error {
 
 		go s.listenQR(qrChan)
 	} else {
-		// Sudah ada sesi login tersimpan
+		// Sudah ada sesi login tersimpan — tunggu event *events.Connected agar prekeys & sesi siap penuh.
 		s.addLogLocked("Menghubungkan ke server WhatsApp dengan sesi tersimpan...")
 		err := s.client.Connect()
 		if err != nil {
 			s.addLogLocked(fmt.Sprintf("Gagal menghubungkan sesi: %v", err))
 			return err
 		}
-		s.state = StateConnected
-		s.addLogLocked("WhatsApp Terhubung!")
+		if s.client.IsConnected() && s.client.IsLoggedIn() && (s.client.PreKeysUploaded == nil || s.client.PreKeysUploaded.IsSet()) {
+			s.state = StateConnected
+		}
 	}
 
 	return nil
+}
+
+func (s *WAServer) markReadyWhenPreKeysSynced(cli *whatsmeow.Client) {
+	if cli != nil && cli.PreKeysUploaded != nil {
+		cli.PreKeysUploaded.WaitTimeout(3 * time.Second)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.client != cli || s.isLoggingOut {
+		return
+	}
+	if cli != nil && cli.IsConnected() && cli.IsLoggedIn() {
+		s.state = StateConnected
+		s.latestQR = ""
+		s.addLogLocked("Koneksi WhatsApp & prekey Signal aktif (CONNECTED).")
+	}
 }
 
 func (s *WAServer) listenQR(qrChan <-chan whatsmeow.QRChannelItem) {
@@ -231,24 +268,34 @@ func (s *WAServer) listenQR(qrChan <-chan whatsmeow.QRChannelItem) {
 }
 
 func (s *WAServer) handleEvent(evt interface{}) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	switch evt.(type) {
+	switch e := evt.(type) {
 	case *events.Connected:
-		s.state = StateConnected
-		s.latestQR = ""
-		s.addLogLocked("Koneksi WhatsApp aktif (CONNECTED).")
+		s.mu.RLock()
+		cli := s.client
+		s.mu.RUnlock()
+		go s.markReadyWhenPreKeysSynced(cli)
+
+	case *events.OfflineSyncCompleted:
+		s.addLog(fmt.Sprintf("Sinkronisasi offline & kunci sesi WhatsApp selesai (%d event).", e.Count))
+
+	case *events.IdentityChange:
+		s.addLog(fmt.Sprintf("Pembaruan kunci identitas device %s (implicit=%v).", e.JID.String(), e.Implicit))
+
+	case *events.Receipt:
+		if e.Type == types.ReceiptTypeRetry {
+			s.addLog(fmt.Sprintf("Permintaan retry dekripsi dari %s untuk ID: %s", e.Sender.String(), strings.Join(e.MessageIDs, ",")))
+		}
 
 	case *events.Disconnected:
+		s.mu.Lock()
 		s.state = StateDisconnected
 		s.addLogLocked("Koneksi terputus (DISCONNECTED). Mencoba menghubungkan kembali dalam 3 detik...")
-		if !s.isLoggingOut {
+		shouldReconnect := !s.isLoggingOut
+		cli := s.client
+		s.mu.Unlock()
+		if shouldReconnect {
 			go func() {
 				time.Sleep(3 * time.Second)
-				s.mu.RLock()
-				cli := s.client
-				s.mu.RUnlock()
 				if cli != nil && !cli.IsConnected() {
 					_ = cli.Connect()
 				}
@@ -256,63 +303,67 @@ func (s *WAServer) handleEvent(evt interface{}) {
 		}
 
 	case *events.LoggedOut:
+		s.mu.Lock()
 		s.state = StateDisconnected
 		s.latestQR = ""
 		s.addLogLocked("Sesi WhatsApp di-logout dari perangkat HP.")
+		s.mu.Unlock()
 	}
 }
 
 // -----------------------------------------------------------------------------
-// JID Resolver & Group Helpers
+// Delivery & Group Helpers
 // -----------------------------------------------------------------------------
 
-func (s *WAServer) resolveJID(ctx context.Context, raw string) (types.JID, error) {
-	input := strings.TrimSpace(raw)
-	if input == "" {
-		return types.EmptyJID, errors.New("JID kosong")
-	}
-
-	if strings.HasSuffix(input, "@"+types.GroupServer) ||
-		strings.HasSuffix(input, "@"+types.HiddenUserServer) ||
-		strings.HasSuffix(input, "@"+types.NewsletterServer) ||
-		strings.HasSuffix(input, "@"+types.DefaultUserServer) {
-		return types.ParseJID(input)
-	}
-
-	// Group tanpa suffix: digits-digits (contoh: 12345-67890)
-	if matched, _ := regexp.MatchString(`^\d+-\d+$`, input); matched {
-		return types.NewJID(input, types.GroupServer), nil
-	}
-
-	// Group tanpa suffix: 18+ digit berawalan 120363
-	digitsOnly := regexp.MustCompile(`\D`).ReplaceAllString(input, "")
-	if len(digitsOnly) >= 18 && strings.HasPrefix(digitsOnly, "120363") {
-		return types.NewJID(digitsOnly, types.GroupServer), nil
-	}
-
-	// Nomor telepon individual
-	phone := digitsOnly
-	if strings.HasPrefix(phone, "0") {
-		phone = "62" + phone[1:]
-	}
-
-	if len(phone) < 8 {
-		return types.EmptyJID, fmt.Errorf("Nomor tidak valid: %s", raw)
-	}
-
-	// Verifikasi nomor via IsOnWhatsApp jika terkoneksi
+func (s *WAServer) ensureConnectedClient() (*whatsmeow.Client, bool) {
 	s.mu.RLock()
 	cli := s.client
+	loggingOut := s.isLoggingOut
 	s.mu.RUnlock()
 
-	if cli != nil && cli.IsConnected() {
-		resp, err := cli.IsOnWhatsApp(ctx, []string{"+" + phone})
-		if err == nil && len(resp) > 0 && resp[0].IsIn {
-			return resp[0].JID, nil
+	if cli == nil || loggingOut || !cli.IsLoggedIn() {
+		return nil, false
+	}
+	if !cli.IsConnected() {
+		if !cli.WaitForConnection(5 * time.Second) {
+			return nil, false
 		}
 	}
+	return cli, cli.IsConnected() && cli.IsLoggedIn()
+}
 
-	return types.NewJID(phone, types.DefaultUserServer), nil
+func (s *WAServer) sendPreparedTextMessage(
+	ctx context.Context,
+	cli *whatsmeow.Client,
+	rawTarget string,
+	text string,
+) (types.JID, error) {
+	targetJID, aliases, err := resolveJIDWithClient(ctx, cli, rawTarget)
+	if err != nil {
+		return types.EmptyJID, err
+	}
+
+	warmAliases := warmRecipientSessions(ctx, cli, targetJID)
+	allAliases := make([]types.JID, 0, len(aliases)+len(warmAliases))
+	allAliases = append(allAliases, aliases...)
+	allAliases = append(allAliases, warmAliases...)
+
+	msgID := cli.GenerateMessageID()
+	msg := &waE2E.Message{
+		Conversation: proto.String(text),
+	}
+
+	if s.retryCache != nil {
+		s.retryCache.Store(targetJID, allAliases, msgID, msg)
+	}
+
+	sendCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	_, sendErr := cli.SendMessage(sendCtx, targetJID, msg, whatsmeow.SendRequestExtra{
+		ID: msgID,
+	})
+	return targetJID, sendErr
 }
 
 func (s *WAServer) refreshGroups(ctx context.Context) error {
@@ -478,12 +529,8 @@ func (s *WAServer) handleSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.mu.RLock()
-	cli := s.client
-	connected := cli != nil && cli.IsConnected()
-	s.mu.RUnlock()
-
-	if !connected {
+	cli, ready := s.ensureConnectedClient()
+	if !ready {
 		s.writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "WA belum terhubung"})
 		return
 	}
@@ -499,24 +546,14 @@ func (s *WAServer) handleSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	targetJID, err := s.resolveJID(r.Context(), req.GroupID)
+	targetJID, err := s.sendPreparedTextMessage(r.Context(), cli, req.GroupID, req.Message)
 	if err != nil {
-		s.addLog(fmt.Sprintf("Gagal resolve JID %s: %v", req.GroupID, err))
-		s.writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-		return
-	}
-
-	msg := &waE2E.Message{
-		Conversation: proto.String(req.Message),
-	}
-
-	sendCtx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
-	defer cancel()
-
-	_, err = cli.SendMessage(sendCtx, targetJID, msg)
-	if err != nil {
-		s.addLog(fmt.Sprintf("Gagal mengirim pesan ke %s: %v", targetJID, err))
-		s.writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		status := http.StatusInternalServerError
+		if targetJID.IsEmpty() {
+			status = http.StatusBadRequest
+		}
+		s.addLog(fmt.Sprintf("Gagal mengirim pesan ke %s: %v", req.GroupID, err))
+		s.writeJSON(w, status, map[string]string{"error": err.Error()})
 		return
 	}
 
@@ -533,12 +570,8 @@ func (s *WAServer) handleBroadcast(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.mu.RLock()
-	cli := s.client
-	connected := cli != nil && cli.IsConnected()
-	s.mu.RUnlock()
-
-	if !connected {
+	cli, ready := s.ensureConnectedClient()
+	if !ready {
 		s.writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "WA belum terhubung"})
 		return
 	}
@@ -572,35 +605,20 @@ func (s *WAServer) handleBroadcast(w http.ResponseWriter, r *http.Request) {
 			rawTarget = t.JID
 		}
 
-		targetJID, err := s.resolveJID(r.Context(), rawTarget)
-		if err != nil {
-			failedCount++
-			results = append(results, TargetResultItem{
-				GroupID: rawTarget,
-				OK:      false,
-				Error:   err.Error(),
-			})
-			s.addLog(fmt.Sprintf("[%d/%d] Broadcast gagal ke %s: %v", i+1, len(req.Targets), rawTarget, err))
-			continue
-		}
-
-		msg := &waE2E.Message{
-			Conversation: proto.String(t.Message),
-		}
-
-		sendCtx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
-		_, sendErr := cli.SendMessage(sendCtx, targetJID, msg)
-		cancel()
-
+		targetJID, sendErr := s.sendPreparedTextMessage(r.Context(), cli, rawTarget, t.Message)
 		if sendErr != nil {
 			failedCount++
+			jidStr := ""
+			if !targetJID.IsEmpty() {
+				jidStr = targetJID.String()
+			}
 			results = append(results, TargetResultItem{
 				GroupID: rawTarget,
-				JID:     targetJID.String(),
+				JID:     jidStr,
 				OK:      false,
 				Error:   sendErr.Error(),
 			})
-			s.addLog(fmt.Sprintf("[%d/%d] Broadcast gagal ke %s: %v", i+1, len(req.Targets), targetJID, sendErr))
+			s.addLog(fmt.Sprintf("[%d/%d] Broadcast gagal ke %s: %v", i+1, len(req.Targets), rawTarget, sendErr))
 		} else {
 			successCount++
 			results = append(results, TargetResultItem{

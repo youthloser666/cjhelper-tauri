@@ -31,9 +31,39 @@ describe('pivot-parser', () => {
       newId: '14SMG0001',
       siteName: 'Tugu Muda',
       tanggal: '2026-11-12 08:00',
+      ring: 'R1',
+      remark: '',
       category: 'Rectifier',
       newTe: 'Budi',
     });
+  });
+
+  it('retains Ring, Link, and optional Remark columns and separates hubType vs priorityLabel during enrichment', async () => {
+    const tsv = [
+      'Row Labels\tMonitoring\tSystem\tCluster\tNew ID\tSite Name\tTanggal\tRing\tRemark\tCategory\tNew TE',
+      'Row1\tLINK DOWN\tNOKIA\tMC-Batang Timur\t14KND0076\t14KND0076_PATEBON_EP\t2026-11-05 20:39:46\tRING-X | SMG-PTBN-EN1-C516Z - SMG-CPRG-EN1-C506Z\tFO Putus\tMetro\tFreeddy Daryanto',
+      'Row2\tPOWER NOW\tHUAWEI\tMC-Kendal\t14KDL0040\t14KDL0040_KLIDANG_WETAN\t2026-11-09 17:15:47\t\t\tPower\tPuji',
+    ].join('\n');
+
+    const parsed = parsePivotData(tsv);
+    assert.equal(parsed.length, 2);
+    assert.equal(parsed[0].ring, 'RING-X | SMG-PTBN-EN1-C516Z - SMG-CPRG-EN1-C506Z');
+    assert.equal(parsed[0].remark, 'FO Putus');
+
+    const enriched = await enrichPivotRows(parsed, {
+      lookupSite: async (id) =>
+        id === '14KND0076'
+          ? { 'Hub Type': 'SMALL HUB SITE', 'Site Class': 'VERY HIGH', 'TE Name': 'Freeddy Daryanto' }
+          : null,
+      statusData: [],
+    });
+
+    assert.equal(enriched[0].hubType, 'SMALL HUB SITE');
+    assert.equal(enriched[0].traffic, 'VERY HIGH');
+    assert.equal(enriched[0].priorityLabel, 'VERY HIGH');
+    assert.equal(enriched[1].hubType, 'END SITE');
+    assert.equal(enriched[1].traffic, '-');
+    assert.equal(enriched[1].priorityLabel, '-');
   });
 
   it('returns empty array for empty or whitespace input', () => {

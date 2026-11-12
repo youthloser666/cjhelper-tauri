@@ -23,8 +23,19 @@ export function initMessagesView({
   let pmGroups = [];
   let pmMode = 'cluster';
   let pmShowRemark = true;
+  let pmClarityFilter = 'all';
   let pmLastSelectedIndex = -1;
   const collapsedGroupKeys = new Set();
+
+  const smartFilterGroup = document.getElementById('pm-smart-filter');
+
+  function syncSmartFilterPills() {
+    smartFilterGroup?.querySelectorAll('.smart-pill').forEach((btn) => {
+      const isMatch = (btn.dataset.clarity || 'all') === pmClarityFilter;
+      btn.classList.toggle('active', isMatch);
+      btn.setAttribute('aria-pressed', String(isMatch));
+    });
+  }
 
   function getActiveFmtMsg() {
     return appStore.getState('fmtMsg') || loadFormatConfig(storageAdapter, 'msg');
@@ -47,6 +58,7 @@ export function initMessagesView({
         cluster: document.getElementById('pm-f-cl')?.value || '',
         newSite: document.getElementById('pm-f-ns')?.value || '',
         remark: document.getElementById('pm-f-rem')?.value || '',
+        clarity: pmClarityFilter,
       },
       fmtMsg,
       showRemark: pmShowRemark,
@@ -115,6 +127,12 @@ export function initMessagesView({
           itemRow.dataset.gidx = groupIndex;
 
           const badgeClass = item.isFully ? 'br' : item.isBcch ? 'ba' : 'bb';
+          const clarityBadgeHtml =
+            item.remarkClarity === 'empty'
+              ? '<span class="remark-flag remark-flag--empty">No Remark</span>'
+              : item.remarkClarity === 'unclear'
+                ? '<span class="remark-flag remark-flag--unclear">Needs Follow-Up</span>'
+                : '';
           itemRow.innerHTML = `
             <td><span class="badge ${badgeClass}">${escapeHtml(item.typeIcon)}</span></td>
             <td>${escapeHtml(item.cluster)}</td>
@@ -123,7 +141,7 @@ export function initMessagesView({
             <td>${escapeHtml(item.old_site || '')}</td>
             <td>${escapeHtml(item.new_site)}</td>
             <td>${escapeHtml(item.time)}</td>
-            <td>${escapeHtml(item.remark)}</td>
+            <td class="pm-remark-cell">${clarityBadgeHtml}${escapeHtml(item.remark)}</td>
           `;
 
           itemRow.addEventListener('click', (event) => {
@@ -191,6 +209,14 @@ export function initMessagesView({
     renderPM();
   });
 
+  smartFilterGroup?.addEventListener('click', (event) => {
+    const button = event.target.closest('.smart-pill');
+    if (!button) return;
+    pmClarityFilter = button.dataset.clarity || 'all';
+    syncSmartFilterPills();
+    renderPM();
+  });
+
   ['pm-f-cl', 'pm-f-ns', 'pm-f-rem'].forEach((inputId) => {
     document.getElementById(inputId)?.addEventListener('input', renderPM);
   });
@@ -200,6 +226,8 @@ export function initMessagesView({
       const element = document.getElementById(inputId);
       if (element) element.value = '';
     });
+    pmClarityFilter = 'all';
+    syncSmartFilterPills();
     renderPM();
   });
 

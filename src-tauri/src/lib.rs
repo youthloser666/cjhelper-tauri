@@ -1,4 +1,5 @@
 mod commands;
+mod wa_bridge;
 
 use commands::*;
 

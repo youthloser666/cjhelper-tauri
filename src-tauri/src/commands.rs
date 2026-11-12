@@ -248,6 +248,7 @@ pub struct SiteStatus {
     pub old_site: String,
     pub category: String,
     pub site_class: String,
+    pub traffic: String,
     pub pic: String,
     pub vendor: String,
     pub te_phone: String,
@@ -492,52 +493,7 @@ pub async fn wa_broadcast(targets: Vec<Value>, delay_ms: Option<u64>) -> Result<
 pub fn wa_start_server(app: tauri::AppHandle) -> Result<(), String> {
     use std::process::{Command, Stdio};
     use tauri::Manager;
-    use tauri::path::BaseDirectory;
 
-    // 1. Cari binary Whatsmeow Go wa_server.exe terlebih dahulu
-    let mut exe_path: Option<std::path::PathBuf> = None;
-
-    // A. Cek di resource directory Tauri
-    if let Ok(res_path) = app.path().resolve("wa_server.exe", BaseDirectory::Resource) {
-        if res_path.exists() {
-            exe_path = Some(res_path);
-        }
-    }
-    if exe_path.is_none() {
-        if let Ok(res_path) = app.path().resolve("wa_server_go/wa_server.exe", BaseDirectory::Resource) {
-            if res_path.exists() {
-                exe_path = Some(res_path);
-            }
-        }
-    }
-
-    // B. Cek sibling dari executable aplikasi saat berjalan
-    if exe_path.is_none() {
-        if let Ok(mut current_exe) = std::env::current_exe() {
-            current_exe.pop(); // Folder tempat cjhelper-app.exe berada
-            let p1 = current_exe.join("wa_server.exe");
-            let p2 = current_exe.join("wa_server_go").join("wa_server.exe");
-            let p3 = current_exe.join("../../..").join("wa_server_go").join("wa_server.exe");
-
-            if p1.exists() {
-                exe_path = Some(p1);
-            } else if p2.exists() {
-                exe_path = Some(p2);
-            } else if p3.exists() {
-                exe_path = Some(p3);
-            }
-        }
-    }
-
-    // C. Fallback dev workspace path
-    if exe_path.is_none() {
-        let dev_path = std::path::PathBuf::from("d:\\WEB\\PROJECT V2\\cjhelper-app\\wa_server_go\\wa_server.exe");
-        if dev_path.exists() {
-            exe_path = Some(dev_path);
-        }
-    }
-
-    // Tentukan path penyimpanan SQLite session di app_config_dir agar aman dari izin write Program Files
     let mut db_arg = String::new();
     if let Ok(config_dir) = app.path().app_config_dir() {
         let _ = std::fs::create_dir_all(&config_dir);
@@ -545,41 +501,8 @@ pub fn wa_start_server(app: tauri::AppHandle) -> Result<(), String> {
         db_arg = format!("--db={}", session_file.to_string_lossy());
     }
 
-    // JIKA wa_server.exe ditemukan -> Jalankan Whatsmeow Go Server!
-    if let Some(target_exe) = exe_path {
-        let working_dir = target_exe.parent().unwrap_or_else(|| std::path::Path::new("."));
-
-        #[cfg(target_os = "windows")]
-        {
-            use std::os::windows::process::CommandExt;
-            const CREATE_NO_WINDOW: u32 = 0x08000000;
-
-            let mut cmd = Command::new(&target_exe);
-            if !db_arg.is_empty() {
-                cmd.arg(&db_arg);
-            }
-            cmd.current_dir(working_dir)
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .creation_flags(CREATE_NO_WINDOW)
-                .spawn()
-                .map_err(|e| format!("Gagal menjalankan Whatsmeow WA Server (Go): {}", e))?;
-        }
-
-        #[cfg(not(target_os = "windows"))]
-        {
-            let mut cmd = Command::new(&target_exe);
-            if !db_arg.is_empty() {
-                cmd.arg(&db_arg);
-            }
-            cmd.current_dir(working_dir)
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .spawn()
-                .map_err(|e| format!("Gagal menjalankan Whatsmeow WA Server (Go): {}", e))?;
-        }
-
-        return Ok(());
+    if let Some(target_exe) = crate::wa_bridge::find_wa_server_executable(&app) {
+        return crate::wa_bridge::spawn_wa_server_process(&target_exe, &db_arg);
     }
 
     // JIKA wa_server.exe tidak ditemukan -> Fallback coba jalankan server.js (Node.js Baileys) jika masih ada
@@ -712,6 +635,9 @@ fn apply_new_db_schema(hdr: &[String], idx: &mut HashMap<String, usize>) {
             idx.insert(key.to_string(), i);
         }
     }
+    if let Some(i) = col_of(hdr, "TRAFFIC") {
+        idx.insert("TRAFFIC".to_string(), i);
+    }
     idx.insert("__NEW".to_string(), 1); // marker: new schema active
 }
 
@@ -764,6 +690,13 @@ pub fn load_db_excel(state: State<'_, AppState>, path: String) -> Result<usize, 
                 if h == "FM OFFICE" || h == "FM_OFFICE" || h == "FM OFFICE NEW" { db_indices.entry("FM_OFFICE".to_string()).or_insert(j); }
                 if h.contains("HOST") && h.contains("NAME") { db_indices.entry("HOST_NAME".to_string()).or_insert(j); }
                 if h == "TLP" || h == "TLP NAME" || h == "TLP_NAME" { db_indices.entry("TLP".to_string()).or_insert(j); }
+                if h == "TRAFFIC" { db_indices.entry("TRAFFIC".to_string()).or_insert(j); }
+                if h == "SITE PRIORITY LABEL" || h == "SITE CLASS" || h == "SITE_CLASS" || h == "TIER" {
+                    db_indices.entry("SITE_CLASS".to_string()).or_insert(j);
+                }
+                if h == "HUB TYPE" || h == "HUB_TYPE" {
+                    db_indices.entry("HUB_TYPE".to_string()).or_insert(j);
+                }
                 
                 headers.push(h_orig);
             }
@@ -1062,6 +995,175 @@ pub fn get_down_sites_coords(state: State<'_, AppState>) -> Result<Vec<MapSite>,
     Ok(map_data)
 }
 
+fn extract_usable_cell(val: &str) -> String {
+    let trimmed = val.trim();
+    if trimmed.is_empty()
+        || trimmed == "-"
+        || trimmed == "—"
+        || trimmed == "0"
+        || trimmed.eq_ignore_ascii_case("nan")
+        || trimmed.eq_ignore_ascii_case("null")
+    {
+        String::new()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn extract_master_traffic(row: &HashMap<String, String>) -> String {
+    let exact_headers = ["TRAFFIC", "TRAFFIC TIER", "TRAFFIC CLASS", "TIER"];
+    for target in exact_headers {
+        for (k, v) in row {
+            if k.trim().eq_ignore_ascii_case(target) {
+                let usable = extract_usable_cell(v);
+                if !usable.is_empty() {
+                    return usable;
+                }
+            }
+        }
+    }
+    for kws in [
+        &["TRAFFIC", "TIER"][..],
+        &["TRAFFIC", "CLASS"][..],
+        &["TRAFFIC"][..],
+        &["TIER"][..],
+    ] {
+        let usable = extract_usable_cell(&get_val(row, kws));
+        if !usable.is_empty() {
+            return usable;
+        }
+    }
+    String::new()
+}
+
+fn lookup_db_cell(
+    db_lookup: &HashMap<String, usize>,
+    db_df: &[Vec<String>],
+    site_key_upper: &str,
+    col_idx: Option<usize>,
+) -> String {
+    col_idx
+        .and_then(|idx| {
+            db_lookup
+                .get(site_key_upper)
+                .and_then(|&row_idx| db_df.get(row_idx))
+                .and_then(|r| r.get(idx))
+                .cloned()
+        })
+        .unwrap_or_default()
+}
+
+fn parse_start_timestamp(
+    raw_start_time: &str,
+    formats: &[&str],
+    last_fmt_idx: &mut Option<usize>,
+) -> i64 {
+    let cleaned = raw_start_time.replace('|', " ").trim().to_string();
+    let trimmed = if cleaned.to_lowercase().ends_with(" p") {
+        cleaned[..cleaned.len() - 2].trim().to_string()
+    } else if cleaned.to_lowercase().ends_with('p') {
+        cleaned[..cleaned.len() - 1].trim().to_string()
+    } else {
+        cleaned
+    };
+
+    if trimmed.is_empty() {
+        return 0;
+    }
+
+    if let Some(idx) = *last_fmt_idx {
+        if let Ok(dt) = NaiveDateTime::parse_from_str(&trimmed, formats[idx]) {
+            return dt.and_utc().timestamp();
+        }
+    }
+    for (idx, fmt) in formats.iter().enumerate() {
+        if let Ok(dt) = NaiveDateTime::parse_from_str(&trimmed, fmt) {
+            *last_fmt_idx = Some(idx);
+            return dt.and_utc().timestamp();
+        }
+    }
+    0
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_site_status_entry(
+    row: &HashMap<String, String>,
+    status: &str,
+    icon: &str,
+    ns_val: String,
+    ns_upper: &str,
+    db_df: &[Vec<String>],
+    db_lookup: &HashMap<String, usize>,
+    db_te_lookup: &HashMap<String, String>,
+    old_site_idx: Option<usize>,
+    vendor_idx: Option<usize>,
+    te_phone_idx: Option<usize>,
+    traffic_idx: Option<usize>,
+    site_class_idx: Option<usize>,
+    hub_type_idx: Option<usize>,
+    formats: &[&str],
+    last_fmt_idx: &mut Option<usize>,
+) -> SiteStatus {
+    let nm = get_val(row, &["SITE", "NAME"]);
+    let cl = get_val(row, &["CLUSTER"]);
+    let mut ol = get_val(row, &["OLD", "SITE"]);
+    if ol.is_empty() {
+        ol = lookup_db_cell(db_lookup, db_df, ns_upper, old_site_idx);
+    }
+    let mut cat = get_val(row, &["CATEGORY"]);
+    if cat.is_empty() {
+        cat = get_val(row, &["CATEG"]);
+    }
+    if cat.is_empty() {
+        cat = extract_usable_cell(&lookup_db_cell(db_lookup, db_df, ns_upper, hub_type_idx));
+    }
+    let s_cls = get_val(row, &["SITE", "CLASS"]);
+
+    // Traffic reads Master TRAFFIC* headers first, falling back to DB Traffic / Site Priority Label / Site Class
+    let mut traffic = extract_master_traffic(row);
+    if traffic.is_empty() {
+        traffic = extract_usable_cell(&lookup_db_cell(db_lookup, db_df, ns_upper, traffic_idx));
+    }
+    if traffic.is_empty() {
+        traffic = extract_usable_cell(&lookup_db_cell(db_lookup, db_df, ns_upper, site_class_idx));
+    }
+
+    let pic = db_te_lookup.get(ns_upper).cloned().unwrap_or_default();
+    let vendor = lookup_db_cell(db_lookup, db_df, ns_upper, vendor_idx);
+    let te_phone = lookup_db_cell(db_lookup, db_df, ns_upper, te_phone_idx);
+
+    let st = get_val(row, &["START"]);
+    let mut agg = get_val(row, &["AGG"]);
+    if agg.is_empty() {
+        agg = calc_dur(&st);
+    }
+    let rts = get_val(row, &["RTS"]);
+    let rem = get_val(row, &["REMARK"]);
+    let imp = get_val(row, &["IMPACT"]);
+    let start_ts = parse_start_timestamp(&st, formats, last_fmt_idx);
+
+    SiteStatus {
+        status: status.to_string(),
+        icon: icon.to_string(),
+        new_site: ns_val,
+        site_name: nm,
+        cluster: cl,
+        impact: imp,
+        rts,
+        start_time: fmt_st(&st),
+        agging: agg,
+        remark: rem,
+        start_timestamp: start_ts,
+        old_site: ol,
+        category: cat,
+        site_class: s_cls,
+        traffic,
+        pic,
+        vendor,
+        te_phone,
+    }
+}
+
 #[tauri::command]
 pub fn check_site_status(state: State<'_, AppState>) -> Result<Vec<SiteStatus>, String> {
     let mdf = state.master_df.lock().unwrap();
@@ -1076,6 +1178,9 @@ pub fn check_site_status(state: State<'_, AppState>) -> Result<Vec<SiteStatus>, 
     let vendor_idx = idx_cache.get("VENDOR").cloned();
     let old_site_idx = idx_cache.get("OLD_SITE").cloned();
     let te_phone_idx = idx_cache.get("TE_PHONE").cloned();
+    let traffic_idx = idx_cache.get("TRAFFIC").cloned();
+    let site_class_idx = idx_cache.get("SITE_CLASS").cloned();
+    let hub_type_idx = idx_cache.get("HUB_TYPE").cloned();
     
     let mut results = Vec::new();
     let mut last_fmt_idx: Option<usize> = None;
@@ -1096,86 +1201,24 @@ pub fn check_site_status(state: State<'_, AppState>) -> Result<Vec<SiteStatus>, 
                 let ns_upper = ns_val.to_uppercase();
                 m_site_ids.insert(ns_upper.clone());
 
-                let nm = get_val(row, &["SITE", "NAME"]);
-                let cl = get_val(row, &["CLUSTER"]);
-                let mut ol = get_val(row, &["OLD", "SITE"]);
-                if ol.is_empty() {
-                    if let Some(idx) = old_site_idx {
-                        ol = db_lookup.get(&ns_upper)
-                            .and_then(|&row_idx| db_df.get(row_idx))
-                            .and_then(|r| r.get(idx))
-                            .cloned()
-                            .unwrap_or_default();
-                    }
-                }
-                let cat = get_val(row, &["CATEGORY"]);
-                let s_cls = get_val(row, &["SITE", "CLASS"]);
-                
-                let pic = db_te_lookup.get(&ns_upper).cloned().unwrap_or_default();
-                let vendor = if let Some(idx) = vendor_idx { 
-                    db_lookup.get(&ns_upper)
-                        .and_then(|&row_idx| db_df.get(row_idx))
-                        .and_then(|r| r.get(idx))
-                        .cloned()
-                        .unwrap_or_default() 
-                } else { String::new() };
-
-                let te_phone = if let Some(idx) = te_phone_idx {
-                    db_lookup.get(&ns_upper)
-                        .and_then(|&row_idx| db_df.get(row_idx))
-                        .and_then(|r| r.get(idx))
-                        .cloned()
-                        .unwrap_or_default()
-                } else { String::new() };
-
-                let st = get_val(row, &["START"]);
-                let mut agg = get_val(row, &["AGG"]);
-                if agg.is_empty() { agg = calc_dur(&st); }
-                let rts = get_val(row, &["RTS"]);
-                let rem = get_val(row, &["REMARK"]);
-                let imp = get_val(row, &["IMPACT"]);
-
-                // Optimized Date Parsing
-                let s_parsed = st.replace("|", " ").trim().to_string();
-                let s_parsed = if s_parsed.to_lowercase().ends_with(" p") { s_parsed[..s_parsed.len() - 2].trim().to_string() } else if s_parsed.to_lowercase().ends_with("p") { s_parsed[..s_parsed.len() - 1].trim().to_string() } else { s_parsed };
-                
-                let mut start_ts = 0;
-                if !s_parsed.is_empty() {
-                    if let Some(idx) = last_fmt_idx {
-                        if let Ok(dt) = NaiveDateTime::parse_from_str(&s_parsed, formats[idx]) {
-                            start_ts = dt.and_utc().timestamp();
-                        }
-                    }
-                    if start_ts == 0 {
-                        for (idx, fmt) in formats.iter().enumerate() {
-                            if let Ok(dt) = NaiveDateTime::parse_from_str(&s_parsed, fmt) {
-                                start_ts = dt.and_utc().timestamp();
-                                last_fmt_idx = Some(idx);
-                                break;
-                            }
-                        }
-                    }
-                }
-
-                results.push(SiteStatus {
-                    status: "DOWN".to_string(),
-                    icon: "❌".to_string(),
-                    new_site: ns_val,
-                    site_name: nm,
-                    cluster: cl,
-                    impact: imp,
-                    rts,
-                    start_time: fmt_st(&st),
-                    agging: agg,
-                    remark: rem,
-                    start_timestamp: start_ts,
-                    old_site: ol,
-                    category: if cat.is_empty() { get_val(row, &["CATEG"]) } else { cat },
-                    site_class: s_cls,
-                    pic,
-                    vendor,
-                    te_phone
-                });
+                results.push(build_site_status_entry(
+                    row,
+                    "DOWN",
+                    "❌",
+                    ns_val,
+                    &ns_upper,
+                    &db_df,
+                    &db_lookup,
+                    &db_te_lookup,
+                    old_site_idx,
+                    vendor_idx,
+                    te_phone_idx,
+                    traffic_idx,
+                    site_class_idx,
+                    hub_type_idx,
+                    &formats,
+                    &mut last_fmt_idx,
+                ));
             }
         }
     }
@@ -1195,86 +1238,24 @@ pub fn check_site_status(state: State<'_, AppState>) -> Result<Vec<SiteStatus>, 
 
                 // If it is NOT in m_site_ids, it means it was recovered (went UP)!
                 if !m_site_ids.contains(&ns_upper) {
-                    let nm = get_val(row, &["SITE", "NAME"]);
-                    let cl = get_val(row, &["CLUSTER"]);
-                    let mut ol = get_val(row, &["OLD", "SITE"]);
-                    if ol.is_empty() {
-                        if let Some(idx) = old_site_idx {
-                            ol = db_lookup.get(&ns_upper)
-                                .and_then(|&row_idx| db_df.get(row_idx))
-                                .and_then(|r| r.get(idx))
-                                .cloned()
-                                .unwrap_or_default();
-                        }
-                    }
-                    let cat = get_val(row, &["CATEGORY"]);
-                    let s_cls = get_val(row, &["SITE", "CLASS"]);
-                    
-                    let pic = db_te_lookup.get(&ns_upper).cloned().unwrap_or_default();
-                    let vendor = if let Some(idx) = vendor_idx { 
-                        db_lookup.get(&ns_upper)
-                            .and_then(|&row_idx| db_df.get(row_idx))
-                            .and_then(|r| r.get(idx))
-                            .cloned()
-                            .unwrap_or_default() 
-                    } else { String::new() };
-
-                    let te_phone = if let Some(idx) = te_phone_idx {
-                        db_lookup.get(&ns_upper)
-                            .and_then(|&row_idx| db_df.get(row_idx))
-                            .and_then(|r| r.get(idx))
-                            .cloned()
-                            .unwrap_or_default()
-                    } else { String::new() };
-
-                    let st = get_val(row, &["START"]);
-                    let mut agg = get_val(row, &["AGG"]);
-                    if agg.is_empty() { agg = calc_dur(&st); }
-                    let rts = get_val(row, &["RTS"]);
-                    let rem = get_val(row, &["REMARK"]);
-                    let imp = get_val(row, &["IMPACT"]);
-
-                    // Optimized Date Parsing
-                    let s_parsed = st.replace("|", " ").trim().to_string();
-                    let s_parsed = if s_parsed.to_lowercase().ends_with(" p") { s_parsed[..s_parsed.len() - 2].trim().to_string() } else if s_parsed.to_lowercase().ends_with("p") { s_parsed[..s_parsed.len() - 1].trim().to_string() } else { s_parsed };
-                    
-                    let mut start_ts = 0;
-                    if !s_parsed.is_empty() {
-                        if let Some(idx) = last_fmt_idx {
-                            if let Ok(dt) = NaiveDateTime::parse_from_str(&s_parsed, formats[idx]) {
-                                start_ts = dt.and_utc().timestamp();
-                            }
-                        }
-                        if start_ts == 0 {
-                            for (idx, fmt) in formats.iter().enumerate() {
-                                if let Ok(dt) = NaiveDateTime::parse_from_str(&s_parsed, fmt) {
-                                    start_ts = dt.and_utc().timestamp();
-                                    last_fmt_idx = Some(idx);
-                                    break;
-                                }
-                            }
-                        }
-                    }
-
-                    results.push(SiteStatus {
-                        status: "UP".to_string(),
-                        icon: "✅".to_string(),
-                        new_site: ns_val,
-                        site_name: nm,
-                        cluster: cl,
-                        impact: imp,
-                        rts,
-                        start_time: fmt_st(&st),
-                        agging: agg,
-                        remark: rem,
-                        start_timestamp: start_ts,
-                        old_site: ol,
-                        category: if cat.is_empty() { get_val(row, &["CATEG"]) } else { cat },
-                        site_class: s_cls,
-                        pic,
-                        vendor,
-                        te_phone
-                    });
+                    results.push(build_site_status_entry(
+                        row,
+                        "UP",
+                        "✅",
+                        ns_val,
+                        &ns_upper,
+                        &db_df,
+                        &db_lookup,
+                        &db_te_lookup,
+                        old_site_idx,
+                        vendor_idx,
+                        te_phone_idx,
+                        traffic_idx,
+                        site_class_idx,
+                        hub_type_idx,
+                        &formats,
+                        &mut last_fmt_idx,
+                    ));
                 }
             }
         }
@@ -2082,4 +2063,65 @@ pub fn find_nearest_sites(state: State<'_, AppState>, lat: f64, lon: f64, limit:
     }).collect();
     
     Ok(top_k)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extract_master_traffic_reads_priority_headers() {
+        let mut row = HashMap::new();
+        row.insert("TRAFFIC GB".to_string(), "120".to_string());
+        row.insert("TRAFFIC TIER".to_string(), "VERY HIGH".to_string());
+        assert_eq!(extract_master_traffic(&row), "VERY HIGH");
+
+        let mut direct = HashMap::new();
+        direct.insert("TRAFFIC".to_string(), "HIGH".to_string());
+        direct.insert("TIER".to_string(), "LOW".to_string());
+        assert_eq!(extract_master_traffic(&direct), "HIGH");
+
+        let mut placeholder = HashMap::new();
+        placeholder.insert("TRAFFIC".to_string(), "-".to_string());
+        placeholder.insert("SITE CLASS".to_string(), "A".to_string());
+        assert_eq!(extract_master_traffic(&placeholder), "");
+    }
+
+    #[test]
+    fn build_site_status_entry_falls_back_to_db_priority_before_blank() {
+        let mut row = HashMap::new();
+        row.insert("SITE NAME".to_string(), "SITE_ALPHA".to_string());
+        row.insert("CLUSTER".to_string(), "Kudus Selatan".to_string());
+        row.insert("SITE CLASS".to_string(), "A".to_string());
+        row.insert("RTS".to_string(), "Jujuk Ahmad Afif".to_string());
+
+        let db_df = vec![vec!["14KDS0001".to_string(), "VERY HIGH".to_string()]];
+        let mut db_lookup = HashMap::new();
+        db_lookup.insert("14KDS0001".to_string(), 0usize);
+        let db_te_lookup = HashMap::new();
+        let mut last_fmt = None;
+
+        let entry = build_site_status_entry(
+            &row,
+            "DOWN",
+            "❌",
+            "14KDS0001".to_string(),
+            "14KDS0001",
+            &db_df,
+            &db_lookup,
+            &db_te_lookup,
+            None,
+            None,
+            None,
+            None,
+            Some(1),
+            None,
+            &["%Y-%m-%d %H:%M:%S"],
+            &mut last_fmt,
+        );
+
+        assert_eq!(entry.traffic, "VERY HIGH");
+        assert_eq!(entry.site_class, "A");
+        assert_eq!(entry.rts, "Jujuk Ahmad Afif");
+    }
 }

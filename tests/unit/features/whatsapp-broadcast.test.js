@@ -227,50 +227,167 @@ test('T027 TE message aggregation, item count, and multi-section formatting matc
   assert.ok(text.indexOf('*SITEDOWN') < text.indexOf('*ENVA NETECO'));
 });
 
-test('T027 generateShareBroadcastMessage builds regional WA summary cleanly', () => {
+test('T027 generateShareBroadcastMessage builds *SITE DOWN VS POWER* layout using RTS + Traffic, folds NOKIA BCCH, and includes Pivot Link Down cleanly', () => {
   const msg = generateShareBroadcastMessage(
     [
       {
         status: 'DOWN',
         impact: 'Fully Down',
         vendor: 'HUAWEI',
-        cluster: 'Semarang',
-        rts: 'RTS 1',
-        new_site: '21SMG0001',
-        site_name: 'SITE HUA',
+        cluster: 'Batang Selatan',
+        pic: 'TE PIC Should Not Leak',
+        rts: 'Freeddy Daryanto',
+        new_site: '14BAG0172',
+        site_name: 'SANGUBANYU_BTG_MT',
         category: 'END SITE',
-        start_time: '01/05/2026 | 08:00',
+        traffic: 'HIGH',
+        site_class: 'A',
+        start_time: '2026-11-07 15:08:49',
         start_timestamp: 0,
-        remark: 'Check genset',
+        remark: 'team onsite stolen',
       },
       {
         status: 'DOWN',
         impact: 'Cell Down',
         vendor: 'NOKIA',
-        cluster: 'Semarang',
-        rts: 'RTS 2',
-        new_site: '21SMG0002',
-        site_name: 'SITE NOK',
-        category: 'END SITE',
-        start_time: '01/05/2026 | 08:05',
+        cluster: 'Batang Timur',
+        pic: 'TE PIC Two',
+        rts: 'Freeddy Daryanto',
+        new_site: '14KND0037',
+        site_name: 'KANGKUNG_2_KND_PL',
+        category: 'SMALL HUB SITE',
+        traffic: 'VERY HIGH',
+        site_class: 'B',
+        start_time: '2026-11-09 11:15:20',
         start_timestamp: 0,
         remark: 'BCCH Missing',
+      },
+      {
+        status: 'DOWN',
+        impact: 'Cell Down',
+        vendor: 'HUAWEI',
+        cluster: 'Batang Barat',
+        pic: 'TE PIC Three',
+        rts: 'Puji Indriyanto',
+        new_site: '14BAG0049',
+        site_name: 'KENCONOREJO_MT',
+        category: 'SMALL HUB SITE',
+        traffic: '',
+        site_class: 'C',
+        start_time: '2026-11-06 17:04:00',
+        start_timestamp: 0,
+        remark: '0',
       },
     ],
     {
       region: 'CJN',
       formatConfig: DEFAULT_BC_FORMAT,
       enableNetdrone: false,
-      nowDate: new Date(2026, 4, 1, 10, 45, 0), // 10:45 -> rounds to 11:00 (odd hour -> hide remark)
+      pivotData: [
+        {
+          monitoring: 'STOLLEN',
+          system: 'HUAWEI',
+          cluster: 'Batang',
+          newId: '14BAG0999',
+          siteName: 'STOLEN SITE',
+          tanggal: '2026-11-09 10:00:00',
+          teName: 'Budi',
+          rtsName: 'RTS 1',
+        },
+        {
+          monitoring: 'LINK DOWN',
+          system: 'HUAWEI',
+          cluster: 'Batang Timur',
+          newId: '14KND0076',
+          siteName: 'PATEBON_EP',
+          tanggal: '2026-11-05 20:39:46',
+          ring: 'RING-01 | SMG-PTBN-EN1-C516Z - SMG-CPRG-EN1-C506Z',
+          hubType: 'SMALL HUB SITE',
+          traffic: 'VERY HIGH',
+          priorityLabel: 'VERY HIGH',
+          teName: 'TE PIC Four',
+          rtsName: 'Freeddy Daryanto',
+        },
+        {
+          monitoring: 'POWER NOW',
+          system: 'HUAWEI',
+          cluster: 'Batang Barat',
+          newId: '14BAG0040',
+          siteName: 'KLIDANG_WETAN_TB',
+          tanggal: '2026-11-09 17:15:47',
+          hubType: 'END SITE',
+          traffic: 'HIGH',
+          priorityLabel: 'HIGH',
+          teName: 'TE PIC Five',
+          rtsName: 'Puji Indriyanto',
+          remark: '',
+        },
+      ],
+      nowDate: new Date(2026, 10, 12, 9, 45, 0), // 09:45 -> rounds to 10:00 (even hour)
     }
   );
 
-  assert.match(msg, /\*SITE FULLY DOWN CJN/);
-  assert.match(msg, /11\.00|11:00/);
+  assert.match(msg, /^\*SITE DOWN VS POWER CJN 12-Nov-2026 10:00\*/);
   assert.match(msg, /\*TOTAL SITEDOWN : 1\*/);
-  assert.match(msg, /\*SITE DOWN MOCN HUAWEI :: 1\*/);
-  assert.doesNotMatch(msg, /Check genset/);
-  assert.match(msg, /\*CELL DOWN BCCH Missing NOKIA : \(1\)\*/);
+  assert.match(msg, /\*SITE DOWN MOCN HUAWEI : 1\*/);
+  assert.match(
+    msg,
+    /Freeddy Daryanto \/ Batang Selatan \/ 14BAG0172 \/ SANGUBANYU_BTG_MT \/ END SITE \/ HIGH \/ 2026-11-07 15:08:49 \| team onsite stolen/
+  );
+  assert.doesNotMatch(msg, /TE PIC Should Not Leak|TE PIC Four|TE PIC Five/);
+  assert.match(msg, /\*Link Down\*/);
+  assert.match(
+    msg,
+    /Freeddy Daryanto \/ Batang Timur \/ 14KND0076 \/ PATEBON_EP \/ SMALL HUB SITE \/ VERY HIGH \/ 2026-11-05 20:39:46 \| SMG-PTBN-EN1-C516Z - SMG-CPRG-EN1-C506Z/
+  );
+  assert.match(msg, /\*ENVA POWER HUAWEI : 1\*/);
+  assert.match(msg, /Puji Indriyanto \/ Batang Barat \/ 14BAG0040 \/ KLIDANG_WETAN_TB \/ END SITE \/ HIGH \/ 2026-11-09 17:15:47 \| $/m);
+  assert.match(msg, /\*CELL DOWN MOCN HUAWEI : 1\*/);
+  assert.match(msg, /Puji Indriyanto \/ Batang Barat \/ 14BAG0049 \/ KENCONOREJO_MT \/ SMALL HUB SITE \/ - \/ 2026-11-06 17:04:00 \| 0/);
+  assert.match(msg, /\*CELL DOWN MOCN NOKIA : 1\*/);
+  assert.doesNotMatch(msg, /ALARM STOLLEN BATTERY|INDIKASI CABLE STOLLEN|CELL DOWN BCCH Missing NOKIA/);
+
+  // Odd hour omits standard remarks while preserving *Link Down* link pair and section order
+  const oddHourMsg = generateShareBroadcastMessage(
+    [
+      {
+        status: 'DOWN',
+        impact: 'Fully Down',
+        vendor: 'HUAWEI',
+        cluster: 'Semarang',
+        pic: 'Andi TE',
+        rts: 'Jujuk Ahmad Afif',
+        new_site: '14SMG0001',
+        site_name: 'SITE HUA',
+        category: 'END SITE',
+        traffic: 'HIGH',
+        start_time: '2026-11-07 08:00:00',
+        start_timestamp: 0,
+        remark: 'Check genset',
+      },
+    ],
+    {
+      region: 'CJN',
+      formatConfig: DEFAULT_BC_FORMAT,
+      pivotData: [
+        {
+          monitoring: 'LINK DOWN',
+          system: 'HUAWEI',
+          cluster: 'Kendal',
+          newId: '14KDL0001',
+          siteName: 'KENDAL LINK',
+          tanggal: '2026-11-07 08:05:00',
+          link: 'KDL-A - KDL-B',
+          teName: 'Budi TE',
+          rtsName: 'Puji Indriyanto',
+        },
+      ],
+      nowDate: new Date(2026, 10, 12, 10, 45, 0), // 10:45 -> rounds to 11:00
+    }
+  );
+  assert.doesNotMatch(oddHourMsg, /Check genset/);
+  assert.match(oddHourMsg, /Jujuk Ahmad Afif \/ Semarang/);
+  assert.match(oddHourMsg, /Puji Indriyanto \/ Kendal.*KENDAL LINK.*\| KDL-A - KDL-B/);
 });
 
 test('T027 daily broadcast logs reset on new date and format newest-first', () => {

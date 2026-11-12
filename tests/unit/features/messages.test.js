@@ -87,6 +87,51 @@ describe('format-config', () => {
     saveFormatConfig(storage, 'bc', updatedBc);
     assert.equal(loadFormatConfig(storage, 'bc').spacing, true);
   });
+
+  it('auto-upgrades unmodified legacy v2.0.4 default templates while keeping custom overrides', () => {
+    const untouchedLegacyMsg = normalizeLegacyFormatConfig(
+      {
+        msg_line: '{icon} {type} / {cluster} | {sitename} | {old} | {new} | {category} | {time}',
+        msg_remark: '    ↳ {remark}',
+      },
+      'msg'
+    );
+    assert.equal(untouchedLegacyMsg.msg_remark, ' | {remark}');
+
+    const untouchedLegacyBc = normalizeLegacyFormatConfig(
+      {
+        msg_line: '{icon} {rts} / {cluster} /  {new}  / {sitename} / {category} / {time}',
+        msg_remark: ' / {remark}',
+        msg_hdr: '*SITE FULLY DOWN {region}  {date} {jam}*\n*TOTAL SITEDOWN : {total_sd}*',
+      },
+      'bc'
+    );
+    assert.equal(untouchedLegacyBc.msg_line, DEFAULT_BC_FORMAT.msg_line);
+    assert.equal(untouchedLegacyBc.msg_remark, ' | {remark}');
+    assert.equal(untouchedLegacyBc.msg_hdr, DEFAULT_BC_FORMAT.msg_hdr);
+
+    const untouchedInitial003Bc = normalizeLegacyFormatConfig(
+      {
+        msg_line: '{icon} {owner} / {cluster} / {new} / {sitename} / {hub_type} / {priority} / {time}',
+        msg_remark: ' | {remark}',
+        msg_hdr: DEFAULT_BC_FORMAT.msg_hdr,
+      },
+      'bc'
+    );
+    assert.equal(untouchedInitial003Bc.msg_line, DEFAULT_BC_FORMAT.msg_line);
+
+    const customizedBc = normalizeLegacyFormatConfig(
+      {
+        msg_line: '{icon} CUSTOM {new}',
+        msg_remark: ' :: {remark}',
+        msg_hdr: '*CUSTOM {region}*',
+      },
+      'bc'
+    );
+    assert.equal(customizedBc.msg_line, '{icon} CUSTOM {new}');
+    assert.equal(customizedBc.msg_remark, ' :: {remark}');
+    assert.equal(customizedBc.msg_hdr, '*CUSTOM {region}*');
+  });
 });
 
 describe('line-formatter', () => {
@@ -112,8 +157,45 @@ describe('line-formatter', () => {
 
     assert.equal(standard.isFully, false);
     assert.equal(standard.isBcch, true);
+    assert.equal(standard.waLine.includes('\n'), false);
     assert.match(standard.waLine, /^▶️ CELLS DOWN/);
-    assert.match(standard.waLine, /↳ BCCH missing fault/);
+    assert.match(standard.waLine, /\| BCCH missing fault$/);
+
+    const noRemarkLine = formatSingleLine(
+      {
+        impact: 'cell down',
+        category: 'STANDARD',
+        site_class: 'REGULAR',
+        start_time: '08:00',
+        start_timestamp: 0,
+        cluster: 'Semarang',
+        site_name: 'Tugu Muda',
+        old_site: 'OLD1',
+        new_site: '14SMG0001',
+        remark: 'BCCH missing fault',
+      },
+      DEFAULT_MSG_FORMAT,
+      false
+    );
+    assert.doesNotMatch(noRemarkLine.waLine, /\| BCCH missing fault|\|\s*$/);
+
+    const multilineOverride = formatSingleLine(
+      {
+        impact: 'Fully Down',
+        category: 'STANDARD',
+        site_class: 'REGULAR',
+        start_time: '08:00',
+        start_timestamp: 0,
+        cluster: 'Semarang',
+        site_name: 'Tugu Muda',
+        old_site: 'OLD1',
+        new_site: '14SMG0001',
+        remark: 'PLN Off',
+      },
+      { ...DEFAULT_MSG_FORMAT, msg_remark: '    ↳ {remark}' },
+      true
+    );
+    assert.equal(multilineOverride.waLine.includes('\n    ↳ PLN Off'), true);
 
     const hubWarning = formatSingleLine(
       {
@@ -228,6 +310,125 @@ describe('pm-grouping', () => {
     assert.equal(groups.length, 1);
     const text = generatePmGroupText(groups[0], { formatConfig: DEFAULT_MSG_FORMAT, pmMode: 'rts' });
     assert.match(text, /RTS : RTS_SMG \(1 cluster: Semarang\) \| SD: 1 \| CD: 0/);
+  });
+
+  it('filters groups and entries cleanly with Smart Filter clarity modes combined with search filters', () => {
+    const mixedSites = [
+      {
+        status: 'DOWN',
+        impact: 'Fully Down',
+        category: 'END SITE',
+        new_site: '14SMG0001',
+        site_name: 'Clear Site',
+        cluster: 'Semarang',
+        pic: 'Budi',
+        rts: 'RTS_SMG',
+        start_time: '08:00',
+        remark: 'PLN Off',
+      },
+      {
+        status: 'DOWN',
+        impact: 'Cell Down',
+        category: 'END SITE',
+        new_site: '14SMG0002',
+        site_name: 'Unclear Site',
+        cluster: 'Semarang',
+        pic: 'Budi',
+        rts: 'RTS_SMG',
+        start_time: '08:30',
+        remark: 'masih cek team',
+      },
+      {
+        status: 'DOWN',
+        impact: 'Cell Down',
+        category: 'END SITE',
+        new_site: '14KDL0003',
+        site_name: 'Empty Site',
+        cluster: 'Kendal',
+        pic: 'Andi',
+        rts: 'RTS_KDL',
+        start_time: '09:00',
+        remark: '0',
+      },
+    ];
+
+    const unclearGroups = buildPmGroups({
+      statusData: mixedSites,
+      pmMode: 'cluster',
+      filters: { clarity: 'unclear' },
+      fmtMsg: DEFAULT_MSG_FORMAT,
+      showRemark: true,
+    });
+    assert.equal(unclearGroups.length, 2);
+    assert.equal(unclearGroups[0].allEntries.length, 1);
+
+    const emptyGroups = buildPmGroups({
+      statusData: mixedSites,
+      pmMode: 'cluster',
+      filters: { clarity: 'empty' },
+      fmtMsg: DEFAULT_MSG_FORMAT,
+      showRemark: true,
+    });
+    assert.equal(emptyGroups.length, 1);
+    assert.equal(emptyGroups[0].pic, 'Andi');
+    assert.equal(emptyGroups[0].allEntries[0].remarkClarity, 'empty');
+
+    const combinedFiltered = buildPmGroups({
+      statusData: mixedSites,
+      pmMode: 'cluster',
+      filters: { cluster: 'Kendal', clarity: 'clear' },
+      fmtMsg: DEFAULT_MSG_FORMAT,
+      showRemark: true,
+    });
+    assert.equal(combinedFiltered.length, 0);
+
+    const mixedClarifiedSites = [
+      {
+        status: 'DOWN',
+        impact: 'Fully Down',
+        category: 'END SITE',
+        new_site: '14DMK0070',
+        site_name: 'JOGOLOYO_PL',
+        cluster: 'Demak Barat',
+        pic: 'TE Budi',
+        rts: 'Jujuk Ahmad Afif',
+        start_time: '14:52',
+        remark: 'team otw eta 90 menit',
+      },
+      {
+        status: 'DOWN',
+        impact: 'Fully Down',
+        category: 'END SITE',
+        new_site: '14KDS0011',
+        site_name: 'ONDORANTE_MT',
+        cluster: 'Kudus Selatan',
+        pic: 'TE Budi',
+        rts: 'Jujuk Ahmad Afif',
+        start_time: '15:10',
+        remark: 'team onsite prepare BUG',
+      },
+    ];
+    const followUpGroups = buildPmGroups({
+      statusData: mixedClarifiedSites,
+      pmMode: 'rts',
+      filters: { clarity: 'unclear' },
+      fmtMsg: DEFAULT_MSG_FORMAT,
+      showRemark: true,
+    });
+    assert.equal(followUpGroups.length, 1);
+    assert.equal(followUpGroups[0].allEntries.length, 1);
+    assert.equal(followUpGroups[0].allEntries[0].new_site, '14DMK0070');
+
+    const actionableGroups = buildPmGroups({
+      statusData: mixedClarifiedSites,
+      pmMode: 'rts',
+      filters: { clarity: 'clear' },
+      fmtMsg: DEFAULT_MSG_FORMAT,
+      showRemark: true,
+    });
+    assert.equal(actionableGroups.length, 1);
+    assert.equal(actionableGroups[0].allEntries.length, 1);
+    assert.equal(actionableGroups[0].allEntries[0].new_site, '14KDS0011');
   });
 });
 

@@ -2,7 +2,10 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  MONTH_SHORT_NAMES,
+  formatShortMonthDate,
   formatPivotDate,
+  formatBroadcastIsoTimestamp,
   calculatePivotAging,
 } from '../../../src/shared/utils/date-time.js';
 
@@ -40,5 +43,19 @@ describe('date-time helpers', () => {
       '> 24 Hours'
     );
     assert.equal(calculatePivotAging('', { referenceNowMs: baseMs }), '0 - 2 Hours');
+  });
+
+  it('formats title-case short month dates and full Broadcast ISO timestamps safely', () => {
+    assert.equal(MONTH_SHORT_NAMES.length, 12);
+    assert.equal(formatShortMonthDate(new Date(2026, 10, 12, 10, 0, 0)), '12-Nov-2026');
+    assert.equal(formatShortMonthDate('2026-05-03 08:15:00'), '03-May-2026');
+    assert.equal(formatShortMonthDate(''), '');
+
+    const epochUtc = Math.floor(Date.UTC(2026, 10, 7, 15, 8, 49) / 1000);
+    assert.equal(formatBroadcastIsoTimestamp(epochUtc), '2026-11-07 15:08:49');
+    assert.equal(formatBroadcastIsoTimestamp(0, '07/11/2026 17:15:47'), '2026-11-07 17:15:47');
+    assert.equal(formatBroadcastIsoTimestamp('2026-11-07 17:04:00'), '2026-11-07 17:04:00');
+    assert.equal(formatBroadcastIsoTimestamp(''), '');
+    assert.equal(formatBroadcastIsoTimestamp(0, 'not-a-date'), 'not-a-date');
   });
 });

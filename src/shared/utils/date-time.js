@@ -1,3 +1,18 @@
+export const MONTH_SHORT_NAMES = Object.freeze([
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+]);
+
 const MONTH_NAME_INDEX = Object.freeze({
   jan: 0,
   feb: 1,
@@ -87,6 +102,37 @@ function parseFlexibleTimestamp(rawDateInput) {
   return Number.isNaN(parsedFallback.getTime()) ? null : parsedFallback;
 }
 
+function formatIsoParts(date, { useUtc = false, includeSeconds = false } = {}) {
+  const year = useUtc ? date.getUTCFullYear() : date.getFullYear();
+  const month = padTwoDigits((useUtc ? date.getUTCMonth() : date.getMonth()) + 1);
+  const day = padTwoDigits(useUtc ? date.getUTCDate() : date.getDate());
+  const hour = padTwoDigits(useUtc ? date.getUTCHours() : date.getHours());
+  const minute = padTwoDigits(useUtc ? date.getUTCMinutes() : date.getMinutes());
+  if (!includeSeconds) {
+    return `${year}-${month}-${day} ${hour}:${minute}`;
+  }
+  const second = padTwoDigits(useUtc ? date.getUTCSeconds() : date.getSeconds());
+  return `${year}-${month}-${day} ${hour}:${minute}:${second}`;
+}
+
+/**
+ * Formats a Date or date string into title-case "DD-Mmm-YYYY" (e.g., "12-Nov-2026").
+ */
+export function formatShortMonthDate(rawDateInput = new Date()) {
+  const parsedDate =
+    rawDateInput instanceof Date
+      ? Number.isNaN(rawDateInput.getTime())
+        ? null
+        : rawDateInput
+      : parseFlexibleTimestamp(rawDateInput);
+  if (!parsedDate) return '';
+
+  const day = padTwoDigits(parsedDate.getDate());
+  const month = MONTH_SHORT_NAMES[parsedDate.getMonth()];
+  const year = parsedDate.getFullYear();
+  return `${day}-${month}-${year}`;
+}
+
 /**
  * Formats an input date string as "YYYY-MM-DD HH:mm".
  * Returns empty string for empty input and preserves unparseable raw text.
@@ -98,13 +144,35 @@ export function formatPivotDate(rawDateInput) {
   const parsedDate = parseFlexibleTimestamp(trimmed);
   if (!parsedDate) return trimmed;
 
-  const year = parsedDate.getFullYear();
-  const month = padTwoDigits(parsedDate.getMonth() + 1);
-  const day = padTwoDigits(parsedDate.getDate());
-  const hour = padTwoDigits(parsedDate.getHours());
-  const minute = padTwoDigits(parsedDate.getMinutes());
+  return formatIsoParts(parsedDate);
+}
 
-  return `${year}-${month}-${day} ${hour}:${minute}`;
+/**
+ * Formats an epoch timestamp (UTC seconds) or flexible date string into "YYYY-MM-DD HH:mm:ss".
+ * Returns empty string for empty input and preserves unparseable raw text.
+ */
+export function formatBroadcastIsoTimestamp(startTimestamp, fallbackTime = '') {
+  const numericEpoch = Number(startTimestamp);
+  if (
+    startTimestamp !== '' &&
+    startTimestamp !== null &&
+    startTimestamp !== undefined &&
+    Number.isFinite(numericEpoch) &&
+    numericEpoch > 0
+  ) {
+    return formatIsoParts(new Date(numericEpoch * 1000), { useUtc: true, includeSeconds: true });
+  }
+
+  const candidateRaw =
+    typeof startTimestamp === 'string' && !(numericEpoch > 0) ? startTimestamp : fallbackTime;
+  const trimmed = String(candidateRaw ?? '').trim();
+  if (!trimmed) return '';
+
+  const normalized = trimmed.replace(/\s*\|\s*/, ' ');
+  const parsedDate = parseFlexibleTimestamp(normalized);
+  if (!parsedDate) return trimmed;
+
+  return formatIsoParts(parsedDate, { includeSeconds: true });
 }
 
 /**

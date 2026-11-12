@@ -1,4 +1,5 @@
 import { detectRegion } from '../../../shared/utils/region-detector.js';
+import { formatShortMonthDate } from '../../../shared/utils/date-time.js';
 import { DEFAULT_BC_FORMAT, DEFAULT_MSG_FORMAT } from '../../messages/logic/format-config.js';
 import {
   formatSingleLine,
@@ -45,6 +46,7 @@ function mapNetdroneRowsToDownSites(netdroneData = [], regionFilter = 'ALL') {
       agging: '',
       remark: row.remark || '',
       category: row.category || '',
+      traffic: row.traffic || row.siteClass || '',
       site_class: row.siteClass || '',
       vendor: row.vendor || '',
       te_phone: row.tePhone || '',
@@ -291,17 +293,18 @@ export function generateTeMessage(
   return parts.join('\n').trim();
 }
 
-function formatBroadcastLine(site, formatConfig, showRemark) {
-  // Broadcast formatter keeps {old} empty and appends msg_remark inline when showRemark is true.
+function formatBroadcastLine(site, formatConfig, showRemark, { forceRemark = false } = {}) {
+  // Broadcast formatter uses RTS Name ({rts}), keeps {old} empty, renders full ISO timestamps, and preserves '| {remark}'.
   const baseLine = formatSingleLine(
-    { ...site, old_site: '', rts: site.rts || site.pic || '' },
+    { ...site, old_site: '', rts: site.rts || '-' },
     formatConfig,
-    false
+    false,
+    { timeFormat: 'iso' }
   ).waLine;
 
-  const remarkTpl = formatConfig.msg_remark || ' / {remark}';
-  if (showRemark && site.remark && !site.is_pivot && remarkTpl.trim()) {
-    return baseLine + remarkTpl.replace(/\{remark\}/g, site.remark || '');
+  const remarkTpl = formatConfig.msg_remark || ' | {remark}';
+  if ((forceRemark || showRemark) && remarkTpl.trim()) {
+    return baseLine + remarkTpl.replace(/\{remark\}/g, site.remark ?? '');
   }
   return baseLine;
 }
@@ -317,17 +320,30 @@ function appendVendorBuckets(parts, sectionTitle, items, formatConfig, showRemar
   const formatBucket = (rows) => rows.map((row) => formatBroadcastLine(row, formatConfig, showRemark)).join('\n');
 
   if (huawei.length > 0) {
-    parts.push(`*${sectionTitle} MOCN HUAWEI :: ${huawei.length}*`, formatBucket(huawei), '');
+    parts.push(`*${sectionTitle} MOCN HUAWEI : ${huawei.length}*`, formatBucket(huawei), '');
   }
   if (nokia.length > 0) {
-    parts.push(`*${sectionTitle} MOCN NOKIA :: ${nokia.length}*`, formatBucket(nokia), '');
+    parts.push(`*${sectionTitle} MOCN NOKIA : ${nokia.length}*`, formatBucket(nokia), '');
   }
   if (others.length > 0) {
-    parts.push(`*${sectionTitle}*`, formatBucket(others), '');
+    parts.push(`*${sectionTitle} : ${others.length}*`, formatBucket(others), '');
   }
   if (items.length === 0 && emptyFallback) {
     parts.push(`*${sectionTitle}*`, emptyFallback, '');
   }
+}
+
+function sortSystemsDeterministically(systems) {
+  const orderWeight = (sys) => {
+    const upper = String(sys || '').toUpperCase();
+    if (upper.includes('HUA')) return 0;
+    if (upper.includes('NOK')) return 1;
+    return 2;
+  };
+  return [...systems].sort((a, b) => {
+    const weightDiff = orderWeight(a) - orderWeight(b);
+    return weightDiff !== 0 ? weightDiff : naturalCompare(a, b);
+  });
 }
 
 /**
@@ -355,13 +371,10 @@ export function generateShareBroadcastMessage(
   rounded.setMinutes(0, 0, 0);
 
   const showRemark = rounded.getHours() % 2 === 0;
-  const dateStr = rounded
-    .toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-    .toUpperCase()
-    .replace(/ /g, '-');
-  const timeStr = rounded
-    .toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
-    .replace(/\./g, ':');
+  const dateStr = formatShortMonthDate(rounded);
+  const timeStr = `${String(rounded.getHours()).padStart(2, '0')}:${String(
+    rounded.getMinutes()
+  ).padStart(2, '0')}`;
 
   const sortByRts = (arr) => [...arr].sort((a, b) => naturalCompare(a.rts, b.rts));
 
@@ -373,80 +386,64 @@ export function generateShareBroadcastMessage(
   const fullyDown = sortByRts(
     downSites.filter((site) => classifySiteOutageCategory(site, formatConfig) === 'sitedown')
   );
+  // Fold NOKIA BCCH and standard partial cell downs together into CELL DOWN MOCN vendor buckets.
   const cellAll = sortByRts(
     downSites.filter((site) => classifySiteOutageCategory(site, formatConfig) !== 'sitedown')
   );
 
-  const bcchKeyword = String(formatConfig.key_bcch || 'BCCH').toUpperCase();
-  const cellBcch = cellAll.filter((site) =>
-    String(site.remark || '').toUpperCase().includes(bcchKeyword)
-  );
-  const cellNormal = cellAll.filter(
-    (site) => !String(site.remark || '').toUpperCase().includes(bcchKeyword)
-  );
-
   const secSd = String(formatConfig.lbl_sd || 'SITE DOWN :').replace(/:/g, '').trim();
-  const secCd = String(formatConfig.lbl_cd || 'CELLS DOWN :').replace(/:/g, '').trim();
-  const secBcch = String(formatConfig.lbl_bcch || 'CELL DOWN BCCH Missing NOKIA :').trim();
+  const secCd = String(formatConfig.lbl_cd || 'CELL DOWN :').replace(/:/g, '').trim();
 
   const headerTemplate =
-    formatConfig.msg_hdr || '*SITE FULLY DOWN {region}  {date} {jam}*\n*TOTAL SITEDOWN : {total_sd}*';
+    formatConfig.msg_hdr || '*SITE DOWN VS POWER {region} {date} {jam}*\n*TOTAL SITEDOWN : {total_sd}*';
   const headerText = headerTemplate
     .replace(/{region}/g, region)
     .replace(/{date}/g, dateStr)
     .replace(/{jam}/g, timeStr)
     .replace(/{total_sd}/g, String(fullyDown.length))
-    .replace(/{total_cd}/g, String(cellNormal.length));
+    .replace(/{total_cd}/g, String(cellAll.length));
 
   const parts = [headerText, ''];
 
-  const appendPivotGroup = (rows, headingFactory, categoryOverride = null) => {
-    const systems = [...new Set(rows.map((row) => row.system))];
-    for (const sys of systems) {
-      const sysRows = rows.filter((row) => row.system === sys);
-      if (!sysRows.length) continue;
-      const lines = sysRows.map((row) => {
-        const item = convertPivotRowToSiteItem(row, statuses);
-        if (categoryOverride) item.category = categoryOverride;
-        return formatBroadcastLine(item, formatConfig, showRemark);
-      });
-      parts.push(headingFactory(sys, sysRows.length), lines.join('\n'), '');
-    }
-  };
-
-  if (pivotData.length > 0) {
-    appendPivotGroup(
-      pivotData.filter((row) => row.monitoring === 'STOLLEN'),
-      (sys) => `*ALARM STOLLEN BATTERY ${sys} : *`,
-      'STOLEN BATTERY'
-    );
-    appendPivotGroup(
-      pivotData.filter((row) => row.monitoring === 'CABLE STOLLEN'),
-      (sys) => `*INDIKASI CABLE STOLLEN ${sys}*`,
-      'STOLEN CABLE'
-    );
-  }
-
   appendVendorBuckets(parts, secSd, fullyDown, formatConfig, showRemark, '- Nihil -');
 
-  if (pivotData.length > 0) {
-    appendPivotGroup(
-      pivotData.filter((row) => {
-        const mon = String(row.monitoring || '');
-        return mon === 'POWER NOW' || mon.includes('POWER') || mon.includes('ENVA');
-      }),
-      (sys, count) => `*ENVA POWER ${sys} : : ${count}*`
+  const linkDownRows = Array.isArray(pivotData)
+    ? pivotData.filter((row) => String(row?.monitoring || '').toUpperCase().includes('LINK'))
+    : [];
+  if (linkDownRows.length > 0) {
+    const linkLines = linkDownRows.map((row) =>
+      formatBroadcastLine(convertPivotRowToSiteItem(row, statuses), formatConfig, showRemark, {
+        forceRemark: true,
+      })
     );
+    parts.push('*Link Down*', linkLines.join('\n'), '');
   }
 
-  appendVendorBuckets(parts, secCd, cellNormal, formatConfig, showRemark, '- Nihil -');
-
-  if (cellBcch.length > 0) {
-    parts.push(
-      `*${secBcch} (${cellBcch.length})*`,
-      cellBcch.map((site) => formatBroadcastLine(site, formatConfig, showRemark)).join('\n')
-    );
+  if (Array.isArray(pivotData) && pivotData.length > 0) {
+    const envaRows = pivotData.filter((row) => {
+      const mon = String(row?.monitoring || '').toUpperCase();
+      if (mon.includes('LINK') || mon.includes('STOLEN') || mon.includes('STOLLEN')) {
+        return false;
+      }
+      return (
+        mon === 'POWER NOW' ||
+        mon.includes('POWER') ||
+        mon.includes('ENVA') ||
+        mon.includes('NETECO')
+      );
+    });
+    const systems = sortSystemsDeterministically([...new Set(envaRows.map((row) => row.system))]);
+    for (const sys of systems) {
+      const sysRows = envaRows.filter((row) => row.system === sys);
+      if (!sysRows.length) continue;
+      const lines = sysRows.map((row) =>
+        formatBroadcastLine(convertPivotRowToSiteItem(row, statuses), formatConfig, showRemark)
+      );
+      parts.push(`*ENVA POWER ${sys} : ${sysRows.length}*`, lines.join('\n'), '');
+    }
   }
+
+  appendVendorBuckets(parts, secCd, cellAll, formatConfig, showRemark, '- Nihil -');
 
   return parts.join('\n').trim();
 }
